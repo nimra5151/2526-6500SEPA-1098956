@@ -11,7 +11,7 @@ import { useQuery } from"@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, user } = useAuth();
   const { toast } = useToast();
   const { t } = useTranslation();
   const [, setLocation] = useLocation();
@@ -30,6 +30,11 @@ export default function Login() {
     queryFn: () => fetch("/api/public/stats").then((res) => res.json()),
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
+
+  // Redirect when user state is committed — handles both normal login and already-logged-in users
+  useEffect(() => {
+    if (user) setLocation("/dashboard");
+  }, [user]);
 
   // Handle Google OAuth token from URL
   useEffect(() => {
@@ -81,7 +86,7 @@ export default function Login() {
     try {
       await login(email, password);
       toast({ title: t("login.welcomeBackToast") });
-      setLocation("/dashboard");
+      // Redirect is handled reactively by the useEffect above once user state commits
     } catch (err: any) {
       if (err.code === "EMAIL_NOT_VERIFIED") {
         setUnverifiedEmail(email);

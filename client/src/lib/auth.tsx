@@ -92,7 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("token", data.token);
     setToken(data.token);
     setUser(data.user);
-    setLocation("/dashboard");
+    // Navigation is handled by the caller (login page useEffect) after state commits
   };
 
   const signup = async (formData: z.infer<typeof signupSchema>) => {
