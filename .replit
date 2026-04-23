@@ -38,3 +38,18 @@ externalPort = 80
 deploymentTarget = "autoscale"
 run = ["node", "dist/index.cjs"]
 build = ["npm", "run", "build"]
+
+[userenv]
+
+[userenv.shared]
+SMTP_HOST = "smtp.gmail.com"
+SMTP_PORT = "587"
+SMTP_USER = "worknimra24@gmail.com"
+SMTP_PASS = "zphzaxthxcbsriwz"
+OPENAI_API_KEY = "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"
+ZOOM_ACCOUNT_ID = "vuYFwGqKSDmzfso5bdAc5A"
+ZOOM_CLIENT_ID = "qfe26xXtT6WDfHkhVpUQ"
+ZOOM_CLIENT_SECRET = "HKl28IbzGMxfJJFuzAQMRDD1mDNu18UJ"
+PINECONE_API_KEY = "pcsk_78JNsL_UP4JKVVAfhtpB8F8Aemz5h24wLkghz7Yn3i8Y53uuFiKdoCy3bxTp6WyVNCQMeM"
+PINECONE_INDEX = "tutorbridge"
+APP_URL = "http://localhost:5000"
