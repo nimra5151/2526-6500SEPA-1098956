@@ -54,7 +54,7 @@ const upload = multer({
   },
 });
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
 const JWT_SECRET = process.env.SESSION_SECRET;
 if (!JWT_SECRET) {
