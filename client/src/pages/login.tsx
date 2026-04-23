@@ -377,9 +377,11 @@ export default function Login() {
             </p>
 
             {import.meta.env.DEV && (
-              <p className="text-center text-xs text-muted-foreground/60 mt-4" data-testid="text-demo-hint">
-                Demo: james@example.com / password123
-              </p>
+              <div className="text-center text-xs text-muted-foreground/60 mt-4 space-y-0.5" data-testid="text-demo-hint">
+                <p>Student: kofi@example.com / password123</p>
+                <p>Tutor: james@example.com / password123</p>
+                <p>Coordinator: sarah@tutorbridge.org / password123</p>
+              </div>
             )}
           </motion.div>
         </div>

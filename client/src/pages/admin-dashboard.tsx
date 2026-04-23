@@ -1436,7 +1436,11 @@ const AdminDashboard = () => {
                       <tbody className="divide-y dark:divide-slate-700">
                         {(allQuizzes as any[]).map((quiz: any) => {
                           let questionCount = 0;
-                          try { questionCount = JSON.parse(quiz.questions || '[]').length; } catch (e) { console.warn('Quiz parse error:', quiz.id, e); }
+                          if (Array.isArray(quiz.questions)) {
+                            questionCount = quiz.questions.length;
+                          } else {
+                            try { questionCount = JSON.parse(quiz.questions || '[]').length; } catch { }
+                          }
                           return (
                             <tr key={quiz.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
                               <td className="px-6 py-4">
