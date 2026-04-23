@@ -57,3 +57,17 @@ npm start          # Run production build
 - Vite serves in middleware mode through Express in development
 - OpenAI client initialization is conditional (only when API key is present)
 - Database is seeded automatically on first run
+- `/dashboard` route auto-redirects each role to their specific dashboard (student → /student-dashboard, tutor → /teacher-dashboard, coordinator → /admin)
+- Google OAuth button on login page is hidden unless `GOOGLE_CLIENT_ID` is configured (checked via `/api/public/stats` `googleOAuthEnabled` flag)
+
+## Schema Changes (recent)
+
+- `userSettings` table: added `weeklyGoal` (int, default 2) and `recentlyViewedClasses` (jsonb, default `[]`)
+- `lessons` table: added `videoUrl` (text) — individual lesson videos; video player shows per-lesson video when available
+- `GET /api/classes/:id/enrollment` — returns `{isEnrolled, isTeacher}` for a given class
+
+## Features
+
+- **Recently Viewed Classes**: tracked in both localStorage and API (`recentlyViewedClasses` setting). Section always visible on student dashboard (shows empty state when no history).
+- **Weekly Goal**: student can set weekly session goal; persisted to `userSettings.weeklyGoal` via API.
+- **Per-Lesson Videos**: lessons can have individual `videoUrl`; shown as embedded video when lesson is expanded in the video player page.

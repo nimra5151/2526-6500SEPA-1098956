@@ -315,7 +315,12 @@ export async function registerRoutes(
         storage.getTutorCount(),
         storage.getClassCount(),
       ]);
-      res.json({ students, tutors, classes });
+      res.json({
+        students,
+        tutors,
+        classes,
+        googleOAuthEnabled: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+      });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -853,6 +858,22 @@ export async function registerRoutes(
       await db.update(classes).set({ viewCount: sql`${classes.viewCount} + 1` }).where(eq(classes.id, cls.id));
 
       res.json({ ...cls, isEnrolled, isFavorited });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Check if the current user is enrolled in a class
+  app.get("/api/classes/:id/enrollment", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const classId = Number(req.params.id);
+      const bookings = await storage.getBookings(req.userId);
+      const isEnrolled = bookings.some(
+        (b) => b.classId === classId && !["cancelled", "no-show"].includes(b.status)
+      );
+      const cls = await storage.getClass(classId);
+      const isTeacher = cls?.tutorId === req.userId;
+      res.json({ isEnrolled, isTeacher });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -1643,7 +1664,8 @@ export async function registerRoutes(
         "emailNotifications", "pushNotifications", "bookingReminders", "messageAlerts",
         "reviewNotifications", "marketingEmails", "messagingPreference", "showProfilePublicly",
         "sessionTimeout", "theme", "language", "timezone", "autoplayVideos", "learningGoals",
-        "preferredSubjects", "studyReminders", "teachingPreferences", "availabilitySchedule", "platformAlerts",
+        "preferredSubjects", "studyReminders", "teachingPreferences", "availabilitySchedule",
+        "platformAlerts", "weeklyGoal", "recentlyViewedClasses",
       ];
       const filtered = Object.fromEntries(
         Object.entries(req.body).filter(([k]) => ALLOWED_SETTINGS.includes(k))
@@ -2177,19 +2199,6 @@ export async function registerRoutes(
   }, msUntilNextMondayAt9am());
 
   // #178: PUBLIC STATS — no auth needed; used by home page hero
-  app.get("/api/public/stats", async (_req: Request, res: Response) => {
-    try {
-      const [[{ total: totalStudents }], [{ total: totalTutors }], [{ total: totalClasses }]] = await Promise.all([
-        db.select({ total: count(users.id) }).from(users).where(eq(users.role, "student")),
-        db.select({ total: count(users.id) }).from(users).where(eq(users.role, "tutor")),
-        db.select({ total: count(classes.id) }).from(classes)
-          .leftJoin(users, eq(classes.tutorId, users.id))
-          .where(isNull(users.deletedAt)),
-      ]);
-      res.json({ totalStudents: Number(totalStudents), totalTutors: Number(totalTutors), totalClasses: Number(totalClasses) });
-    } catch (err: any) { res.status(500).json({ message: err.message }); }
-  });
-
   // DASHBOARD
   app.get("/api/dashboard/stats", authMiddleware, async (req: Request, res: Response) => {
     try {

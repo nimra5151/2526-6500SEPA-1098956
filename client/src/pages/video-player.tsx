@@ -519,6 +519,14 @@ export default function VideoPlayer() {
 
                     {isExpanded && (
                       <div className="border-t border-slate-700 p-4 space-y-4">
+                        {lesson.videoUrl && (
+                          <video
+                            src={lesson.videoUrl}
+                            controls
+                            className="w-full rounded-lg max-h-64 bg-black"
+                            preload="metadata"
+                          />
+                        )}
                         {sections.length > 0 ? (
                           <>
                             {/* Slide card */}

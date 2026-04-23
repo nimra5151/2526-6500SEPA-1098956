@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useAuth } from"@/lib/auth";
 import { useQuery, useMutation } from"@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from"@/components/ui/card";
@@ -1501,9 +1502,16 @@ function CoordinatorDashboard({ user, stats }: CoordinatorDashboardProps) {
 }
 
 export default function Dashboard() {
-  // #158: /dashboard is now a real unified view; removed instant redirect so the page renders content
   const { user } = useAuth();
   const [, setLocation] = useLocation();
+
+  // Redirect each role to their specific dashboard immediately
+  useEffect(() => {
+    if (!user) return;
+    if (user.role === "student") { setLocation("/student-dashboard"); return; }
+    if (user.role === "tutor") { setLocation("/teacher-dashboard"); return; }
+    if (user.role === "coordinator") { setLocation("/admin"); return; }
+  }, [user, setLocation]);
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['dashboard', 'stats'],

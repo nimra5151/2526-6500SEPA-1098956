@@ -220,7 +220,7 @@ export default function ClassDetail() {
     enabled: !!params?.id,
   });
 
-  // #185: Track recently viewed classes in localStorage (most-recent first, max 8)
+  // Track recently viewed classes in localStorage + API (most-recent first, max 8)
   useEffect(() => {
     if (!cls?.id) return;
     try {
@@ -237,7 +237,13 @@ export default function ClassDetail() {
       };
       const filtered = list.filter((c) => c.id !== cls.id);
       filtered.unshift(entry);
-      localStorage.setItem(KEY, JSON.stringify(filtered.slice(0, 8)));
+      const updated = filtered.slice(0, 8);
+      localStorage.setItem(KEY, JSON.stringify(updated));
+      // Persist IDs to server-side settings (fire-and-forget)
+      authFetch('/api/settings', {
+        method: 'PUT',
+        body: JSON.stringify({ recentlyViewedClasses: updated.map((c: any) => c.id) }),
+      }).catch(() => {});
     } catch {}
   }, [cls?.id, cls?.title, cls?.category, cls?.thumbnailUrl, cls?.tutorName]);
 

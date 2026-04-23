@@ -47,11 +47,32 @@ export default function StudentDashboard() {
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
   const [reviewingQuizResult, setReviewingQuizResult] = useState<QuizResult | null>(null);
-  // #185: recently viewed classes (read from localStorage)
+  // recently viewed classes (localStorage + API sync)
   const [recentlyViewed, setRecentlyViewed] = useState<any[]>(() => {
     try { return JSON.parse(localStorage.getItem('tutorbridge_recently_viewed') || '[]'); } catch { return []; }
   });
-  // Refresh from localStorage when tab regains focus (other tabs may add entries)
+
+  // Load weeklyGoal + recentlyViewedClasses from settings API (overrides localStorage if available)
+  const { data: userSettings } = useQuery<any>({
+    queryKey: ['/api/settings'],
+    queryFn: () => authFetch('/api/settings'),
+  });
+  useEffect(() => {
+    if (!userSettings) return;
+    if (typeof userSettings.weeklyGoal === 'number') {
+      setGoalPerWeek(userSettings.weeklyGoal);
+    }
+    if (Array.isArray(userSettings.recentlyViewedClasses) && userSettings.recentlyViewedClasses.length > 0) {
+      // Merge API list into localStorage format (IDs only from API, full objects from localStorage)
+      const localList: any[] = (() => { try { return JSON.parse(localStorage.getItem('tutorbridge_recently_viewed') || '[]'); } catch { return []; } })();
+      const merged = userSettings.recentlyViewedClasses
+        .map((id: number) => localList.find((c: any) => c.id === id))
+        .filter(Boolean);
+      if (merged.length > 0) setRecentlyViewed(merged);
+    }
+  }, [userSettings?.weeklyGoal, userSettings?.recentlyViewedClasses?.length]);
+
+  // Refresh from localStorage when another tab updates it
   useEffect(() => {
     const refresh = () => {
       try { setRecentlyViewed(JSON.parse(localStorage.getItem('tutorbridge_recently_viewed') || '[]')); } catch {}
@@ -479,6 +500,7 @@ export default function StudentDashboard() {
                         onChange={e => setGoalPerWeek(Math.max(1, parseInt(e.target.value) || 1))} />
                       <Button size="sm" className="h-7 text-xs bg-indigo-600 hover:bg-indigo-700 text-white" onClick={() => {
                         localStorage.setItem('tutorbridge_weekly_goal', String(goalPerWeek));
+                        authFetch('/api/settings', { method: 'PUT', body: JSON.stringify({ weeklyGoal: goalPerWeek }) }).catch(() => {});
                         setEditingGoal(false);
                         toast({ title: 'Goal updated!' });
                       }}>Save</Button>
@@ -496,26 +518,31 @@ export default function StudentDashboard() {
               </CardContent>
             </Card>
 
-            {/* #185: Recently Viewed Classes */}
-            {recentlyViewed.length > 0 && (
-              <Card className="border border-border/60 dark:border-slate-800 shadow-sm">
-                <CardHeader className="border-b border-border/40 dark:border-slate-800 pb-4 flex flex-row items-center justify-between">
-                  <CardTitle className="text-base font-semibold flex items-center gap-2">
-                    <Eye className="w-4 h-4 text-indigo-600" /> Recently Viewed
-                  </CardTitle>
+            {/* Recently Viewed Classes */}
+            <Card className="border border-border/60 dark:border-slate-800 shadow-sm">
+              <CardHeader className="border-b border-border/40 dark:border-slate-800 pb-4 flex flex-row items-center justify-between">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <Eye className="w-4 h-4 text-indigo-600" /> Recently Viewed
+                </CardTitle>
+                {recentlyViewed.length > 0 && (
                   <Button
                     variant="ghost"
                     size="sm"
                     className="text-xs text-slate-500 h-7"
                     onClick={() => {
                       try { localStorage.removeItem('tutorbridge_recently_viewed'); } catch {}
+                      authFetch('/api/settings', { method: 'PUT', body: JSON.stringify({ recentlyViewedClasses: [] }) }).catch(() => {});
                       setRecentlyViewed([]);
                     }}
                   >
                     Clear
                   </Button>
-                </CardHeader>
-                <CardContent className="p-5">
+                )}
+              </CardHeader>
+              <CardContent className="p-5">
+                {recentlyViewed.length === 0 ? (
+                  <p className="text-sm text-slate-500 text-center py-4">No recently viewed classes yet. <Link href="/classes" className="text-indigo-600 hover:underline">Browse classes</Link> to get started.</p>
+                ) : (
                   <div className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1">
                     {recentlyViewed.map((rc: any) => (
                       <Link key={rc.id} href={`/classes/${rc.id}`}>
@@ -546,9 +573,9 @@ export default function StudentDashboard() {
                       </Link>
                     ))}
                   </div>
-                </CardContent>
-              </Card>
-            )}
+                )}
+              </CardContent>
+            </Card>
 
             {/* Learning Path */}
             <Card className="border border-border/60 dark:border-slate-800 shadow-sm">

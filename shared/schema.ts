@@ -197,6 +197,8 @@ export const userSettings = pgTable("user_settings", {
   teachingPreferences: text("teaching_preferences"),
   availabilitySchedule: jsonb("availability_schedule"),
   platformAlerts: boolean("platform_alerts").default(true),
+  weeklyGoal: integer("weekly_goal").default(2),
+  recentlyViewedClasses: jsonb("recently_viewed_classes").$type<number[]>().default(sql`'[]'::jsonb`),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -247,6 +249,7 @@ export const lessons = pgTable("lessons", {
   title: text("title").notNull(),
   description: text("description"),
   content: text("content"),
+  videoUrl: text("video_url"),
   duration: integer("duration").default(30),
   difficulty: text("difficulty").default("beginner"),
   sections: jsonb("sections"),

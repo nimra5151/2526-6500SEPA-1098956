@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { users, classes, bookings, reviews, notifications, safeguardingReports, lessons, quizzes, assignments, quizResults, assignmentSubmissions, courseProgress, notes, discussions, discussionReplies, certificates, favorites, contactSubmissions, peerHelpers, peerHelpRequests, peerSessions, messages, loginHistory, userSettings, classWaitlist } from "@shared/schema";
+import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 
@@ -407,6 +408,20 @@ export async function seedDatabase() {
       ],
     },
   ]).returning();
+
+  // Assign individual video URLs to seeded lessons (using free sample MP4s)
+  const SAMPLE_VIDEOS = [
+    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
+  ];
+  for (let i = 0; i < [lesson1, lesson2, lesson3, lesson4, lesson5, lesson6].length; i++) {
+    const l = [lesson1, lesson2, lesson3, lesson4, lesson5, lesson6][i];
+    await db.update(lessons).set({ videoUrl: SAMPLE_VIDEOS[i % SAMPLE_VIDEOS.length] }).where(eq(lessons.id, l.id));
+  }
 
   // Additional lessons for richer course content across categories
   const aiClass = createdClasses[2];      // Introduction to Artificial Intelligence
