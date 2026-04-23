@@ -9,6 +9,7 @@ import { registerSwagger } from "./swagger";
 import { createServer } from "http";
 import { seedDatabase } from "./seed";
 import path from "path";
+import fs from "fs";
 
 // ── Env validation — fail fast if critical vars are missing ───────────────────
 if (!process.env.DATABASE_URL) {
@@ -205,23 +206,56 @@ app.use((req, res, next) => {
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
 
+  // Graceful shutdown — ensures the port is released when the process exits
+  const shutdown = () => {
+    httpServer.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 3000).unref();
+  };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+
+  // Kill whatever is holding the port by looking up the PID via /proc
+  const killPortHolder = (p: number) => {
+    try {
+      const hexPort = p.toString(16).padStart(4, "0").toUpperCase();
+      const lines = fs.readFileSync("/proc/net/tcp", "utf8").split("\n").slice(1);
+      for (const line of lines) {
+        const parts = line.trim().split(/\s+/);
+        if (!parts[1]) continue;
+        const portHex = parts[1].split(":")[1]?.toUpperCase();
+        if (portHex !== hexPort) continue;
+        const inode = parts[9];
+        for (const pid of fs.readdirSync("/proc").filter((x: string) => /^\d+$/.test(x))) {
+          try {
+            for (const fd of fs.readdirSync(`/proc/${pid}/fd`)) {
+              try {
+                if (fs.readlinkSync(`/proc/${pid}/fd/${fd}`).includes(`socket:[${inode}]`)) {
+                  process.kill(Number(pid), "SIGKILL");
+                  log(`Killed PID ${pid} holding port ${p}`);
+                }
+              } catch {}
+            }
+          } catch {}
+        }
+      }
+    } catch {}
+  };
+
+  httpServer.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      log(`Port ${port} in use — killing holder and retrying...`);
+      killPortHolder(port);
+      setTimeout(() => startServer(), 1500);
+    } else {
+      throw err;
+    }
+  });
+
   const startServer = () => {
     httpServer.listen({ port, host: "0.0.0.0" }, () => {
       log(`serving on port ${port}`);
     });
   };
-
-  httpServer.on("error", (err: NodeJS.ErrnoException) => {
-    if (err.code === "EADDRINUSE") {
-      log(`Port ${port} in use, waiting for it to be released...`);
-      setTimeout(() => {
-        httpServer.close();
-        startServer();
-      }, 2000);
-    } else {
-      throw err;
-    }
-  });
 
   startServer();
 })();
