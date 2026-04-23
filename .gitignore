@@ -1,0 +1,40 @@
+node_modules
+dist
+.local
+.DS_Store
+server/public
+vite.config.ts.*
+*.tar.gz
+*.zip
+
+# Environment variables — NEVER commit these
+.env
+.env.local
+.env.production
+.env.*.local
+
+# Test coverage reports
+coverage/
+
+# Uploaded files
+uploads/
+
+# Development assets (prompt files, temporary images)
+attached_assets/
+
+# AI and internal documentation
+CLAUDE.md
+FULL_SYSTEM_AUDIT.md
+project-plan.md
+claude-memory.md
+
+# AI agent and config directories
+.agents/
+.config/
+
+# Test results
+test-results/
+
+# Build artifacts
+dist/
+build/
