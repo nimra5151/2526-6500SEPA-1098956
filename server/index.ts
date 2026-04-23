@@ -31,10 +31,13 @@ if (process.env.NODE_ENV === "production") {
 const httpServer = createServer(app);
 
 // ── Security middleware ────────────────────────────────────────────────────────
+const isDev = process.env.NODE_ENV !== "production";
+
 app.use(helmet({
-  crossOriginEmbedderPolicy: false, // allow Vite HMR in dev
-  // #18: Enable a permissive-but-present CSP in production; disabled only in dev
-  contentSecurityPolicy: process.env.NODE_ENV === "production" ? {
+  crossOriginEmbedderPolicy: false,
+  // Allow Replit proxy to embed the app in an iframe in dev
+  frameguard: isDev ? false : { action: "sameorigin" },
+  contentSecurityPolicy: isDev ? false : {
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://unpkg.com"],
@@ -44,14 +47,19 @@ app.use(helmet({
       connectSrc: ["'self'", "wss:", "https:"],
       frameSrc: ["https://zoom.us"],
     },
-  } : false,
-  // #30: Enable HSTS in production
-  strictTransportSecurity: process.env.NODE_ENV === "production" ? { maxAge: 31536000, includeSubDomains: true } : false,
+  },
+  strictTransportSecurity: isDev ? false : { maxAge: 31536000, includeSubDomains: true },
 }));
 
-const allowedOrigins = process.env.APP_URL
-  ? [process.env.APP_URL, "http://localhost:5000"]
-  : ["http://localhost:5000"];
+// Build allowed origins: always include localhost + the Replit dev domain if present
+const allowedOrigins: (string | RegExp)[] = ["http://localhost:5000", "http://localhost:3000"];
+if (process.env.APP_URL) allowedOrigins.push(process.env.APP_URL);
+if (process.env.REPLIT_DEV_DOMAIN) {
+  allowedOrigins.push(`https://${process.env.REPLIT_DEV_DOMAIN}`);
+}
+// Also allow any *.replit.dev and *.sisko.replit.dev sub-domain (for Replit proxy iframes)
+allowedOrigins.push(/\.replit\.dev$/);
+allowedOrigins.push(/\.sisko\.replit\.dev$/);
 
 app.use(cors({
   origin: allowedOrigins,
@@ -241,17 +249,17 @@ app.use((req, res, next) => {
     } catch {}
   };
 
-  httpServer.on("error", (err: NodeJS.ErrnoException) => {
-    if (err.code === "EADDRINUSE") {
-      log(`Port ${port} in use — killing holder and retrying...`);
-      killPortHolder(port);
-      setTimeout(() => startServer(), 1500);
-    } else {
-      throw err;
-    }
-  });
-
   const startServer = () => {
+    if (httpServer.listening) return;
+    httpServer.once("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRINUSE") {
+        log(`Port ${port} in use — killing holder and retrying...`);
+        killPortHolder(port);
+        setTimeout(startServer, 1500);
+      } else {
+        throw err;
+      }
+    });
     httpServer.listen({ port, host: "0.0.0.0" }, () => {
       log(`serving on port ${port}`);
     });

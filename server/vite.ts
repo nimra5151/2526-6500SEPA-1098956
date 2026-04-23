@@ -12,7 +12,13 @@ export async function setupVite(server: Server, app: Express) {
   const serverOptions = {
     middlewareMode: true,
     hmr: process.env.REPLIT_DEV_DOMAIN
-      ? { server, path: "/vite-hmr", clientPort: 443, host: process.env.REPLIT_DEV_DOMAIN }
+      ? {
+          server,
+          path: "/vite-hmr",
+          clientPort: 443,
+          host: process.env.REPLIT_DEV_DOMAIN,
+          protocol: "wss" as const,
+        }
       : { server, path: "/vite-hmr" },
     allowedHosts: true as const,
     host: "0.0.0.0",
