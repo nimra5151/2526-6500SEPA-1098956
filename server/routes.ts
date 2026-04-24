@@ -1887,7 +1887,7 @@ export async function registerRoutes(
   app.get("/api/admin/users", coordinatorMiddleware, async (req: Request, res: Response) => {
     try {
       const allUsers = await storage.getAllUsers();
-      const safeUsers = allUsers.map(({ password, ...u }) => u);
+      const safeUsers = allUsers.map(({ password, tokenVersion, lastLoginIp, ...u }) => u);
       res.json(safeUsers);
     } catch (err: any) {
       res.status(500).json({ message: err.message });

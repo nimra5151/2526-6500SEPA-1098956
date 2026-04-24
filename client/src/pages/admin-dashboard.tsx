@@ -53,6 +53,8 @@ const AdminDashboard = () => {
   const [selectedTeacherIds, setSelectedTeacherIds] = useState<Set<number>>(new Set());
   // #89: replace window.confirm for bulk operations with state-driven dialog
   const [confirmBulk, setConfirmBulk] = useState<{ ids: number[]; action: string } | null>(null);
+  const [deletingClass, setDeletingClass] = useState<any>(null);
+  const [removingQuiz, setRemovingQuiz] = useState<any>(null);
 
   const { data: allUsers = [], isLoading: usersLoading } = useQuery({
     queryKey: ['admin', 'users'],
@@ -1411,11 +1413,7 @@ const AdminDashboard = () => {
                                   variant="ghost"
                                   size="sm"
                                   className="h-8 px-2"
-                                  onClick={() => {
-                                    if (confirm('Are you sure you want to delete this class?')) {
-                                      deleteClassMutation.mutate(cls.id);
-                                    }
-                                  }}
+                                  onClick={() => setDeletingClass(cls)}
                                   disabled={deleteClassMutation.isPending}
                                 >
                                   <Trash2 className="w-4 h-4 text-red-600" />
@@ -1473,7 +1471,7 @@ const AdminDashboard = () => {
                                   </Button>
                                   <Button variant="ghost" size="sm" className="h-8 text-red-600 hover:text-red-700 hover:bg-red-50"
                                     disabled={removeQuizMutation.isPending}
-                                    onClick={() => { if (confirm('Remove this quiz from the platform?')) removeQuizMutation.mutate(quiz.id); }}>
+                                    onClick={() => setRemovingQuiz(quiz)}>
                                     <Trash2 className="w-4 h-4 mr-1" /> Remove
                                   </Button>
                                 </div>
@@ -2360,6 +2358,68 @@ const AdminDashboard = () => {
           </div>
         )}
       </div>
+
+      {/* Delete Class confirmation modal */}
+      {deletingClass && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setDeletingClass(null)}>
+          <div className="bg-card rounded-xl shadow-2xl w-full max-w-sm border border-slate-200 dark:border-slate-700" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b dark:border-slate-800">
+              <h3 className="font-semibold text-red-700 dark:text-red-400 flex items-center gap-2">
+                <Trash2 className="w-5 h-5" /> Delete Class
+              </h3>
+              <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => setDeletingClass(null)}><X className="w-4 h-4" /></Button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="p-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+                <p className="text-sm font-semibold text-red-800 dark:text-red-300">⚠ This action is irreversible</p>
+                <p className="text-sm text-red-700 dark:text-red-400 mt-1">
+                  Permanently delete <strong>{deletingClass.title}</strong> and all its lessons, quizzes, and enrolments. This cannot be undone.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <Button variant="destructive" className="flex-1"
+                  disabled={deleteClassMutation.isPending}
+                  onClick={() => { deleteClassMutation.mutate(deletingClass.id); setDeletingClass(null); }}>
+                  {deleteClassMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                  Delete Class
+                </Button>
+                <Button variant="outline" onClick={() => setDeletingClass(null)}>Cancel</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Remove Quiz confirmation modal */}
+      {removingQuiz && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setRemovingQuiz(null)}>
+          <div className="bg-card rounded-xl shadow-2xl w-full max-w-sm border border-slate-200 dark:border-slate-700" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b dark:border-slate-800">
+              <h3 className="font-semibold text-red-700 dark:text-red-400 flex items-center gap-2">
+                <Trash2 className="w-5 h-5" /> Remove Quiz
+              </h3>
+              <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => setRemovingQuiz(null)}><X className="w-4 h-4" /></Button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="p-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+                <p className="text-sm font-semibold text-red-800 dark:text-red-300">⚠ This will remove the quiz</p>
+                <p className="text-sm text-red-700 dark:text-red-400 mt-1">
+                  Remove <strong>{removingQuiz.title}</strong> from the platform. All student attempts and results will be deleted.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <Button variant="destructive" className="flex-1"
+                  disabled={removeQuizMutation.isPending}
+                  onClick={() => { removeQuizMutation.mutate(removingQuiz.id); setRemovingQuiz(null); }}>
+                  {removeQuizMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                  Remove Quiz
+                </Button>
+                <Button variant="outline" onClick={() => setRemovingQuiz(null)}>Cancel</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* #89: Bulk block/unblock confirmation dialog */}
       {confirmBulk && (
