@@ -658,7 +658,7 @@ export default function TeacherDashboard() {
                           if (!notif.isRead) {
                             authFetch(`/api/notifications/${notif.id}/read`, { method: 'PATCH' })
                               .then(() => {
-                                queryClient.invalidateQueries({ queryKey: ['/api/notifications'] });
+                                queryClient.invalidateQueries({ queryKey: ['notifications'] });
                                 queryClient.invalidateQueries({ queryKey: ['/api/notifications/unread-count'] });
                               })
                               .catch(() => {});
@@ -1683,7 +1683,7 @@ export default function TeacherDashboard() {
                               </Badge>
                             </td>
                             <td className="px-6 py-4 text-sm font-semibold text-foreground">
-                              {sub.grade !== null && sub.grade !== undefined ? `${sub.grade}/100` : '—'}
+                              {sub.grade !== null && sub.grade !== undefined ? `${sub.grade}/${sub.maxScore ?? 100}` : '—'}
                             </td>
                             <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
                               {sub.submittedAt ? new Date(sub.submittedAt).toLocaleDateString() : '—'}

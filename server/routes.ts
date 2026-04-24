@@ -3235,7 +3235,7 @@ Give exactly 3 suggestions. Each "text" should describe their current progress c
     try {
       const tutorId = req.userId;
       // Get all assignments belonging to this tutor
-      const tutorAssignments = await db.select({ id: assignments.id, title: assignments.title, classId: assignments.classId })
+      const tutorAssignments = await db.select({ id: assignments.id, title: assignments.title, classId: assignments.classId, maxScore: assignments.maxScore })
         .from(assignments)
         .where(eq(assignments.tutorId, tutorId));
       if (!tutorAssignments.length) return res.json([]);
@@ -3261,6 +3261,7 @@ Give exactly 3 suggestions. Each "text" should describe their current progress c
         ...s,
         assignmentTitle: assignmentMap.get(s.assignmentId)?.title,
         assignmentClassId: assignmentMap.get(s.assignmentId)?.classId,
+        maxScore: assignmentMap.get(s.assignmentId)?.maxScore ?? 100,
       }));
       res.json(enriched);
     } catch (err: any) { res.status(500).json({ message: err.message }); }
