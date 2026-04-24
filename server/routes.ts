@@ -12,7 +12,7 @@ declare global {
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { signupSchema, loginSchema, insertLessonSchema, insertQuizSchema, insertAssignmentSchema, users, lessons, quizzes, assignments, assignmentSubmissions, notes, quizResults, certificates, notifications, emailVerificationTokens, passwordResetTokens as dbPasswordResetTokens, bookings, classes, contactSubmissions, classWaitlist, courseProgress, discussions, discussionReplies, reviews, type Booking } from "@shared/schema";
+import { signupSchema, loginSchema, insertLessonSchema, insertQuizSchema, insertAssignmentSchema, users, lessons, quizzes, assignments, assignmentSubmissions, notes, quizResults, certificates, notifications, messages as messagesTable, emailVerificationTokens, passwordResetTokens as dbPasswordResetTokens, bookings, classes, contactSubmissions, classWaitlist, courseProgress, discussions, discussionReplies, reviews, type Booking } from "@shared/schema";
 import { isNull } from "drizzle-orm";
 import { eq, and, ne, not, inArray, gte, lte, desc, asc, or, ilike, sql, count } from "drizzle-orm";
 import { sendBookingConfirmationEmail, sendAssignmentGradedEmail, sendVerificationEmail, sendWeeklyDigestEmail, sendPasswordResetEmail, sendCourseCompletionEmail, sendTutorApprovedEmail, sendTutorRejectedEmail, testEmailConnection } from "./email";
@@ -3329,7 +3329,7 @@ Give exactly 3 suggestions. Each "text" should describe their current progress c
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
-  // Return assignment for revision — saves feedback and notifies student atomically
+  // Return assignment for revision — saves feedback and notifies student in a single atomic transaction
   app.patch("/api/assignment-submissions/:id/feedback", authMiddleware, async (req, res) => {
     try {
       const { feedback } = req.body;
@@ -3341,31 +3341,30 @@ Give exactly 3 suggestions. Each "text" should describe their current progress c
       if (!assignment || assignment.tutorId !== req.userId) {
         return res.status(403).json({ message: "Forbidden" });
       }
-      // Save feedback and notify student in a single atomic step
-      const [updated] = await db.update(assignmentSubmissions)
-        .set({ feedback })
-        .where(eq(assignmentSubmissions.id, Number(req.params.id)))
-        .returning();
-      // Send in-app notification and message to student as part of the same operation
-      try {
-        const notif = await storage.createNotification({
+      // All DB writes happen inside a single transaction — if any step fails, everything rolls back
+      const { updated, notif } = await db.transaction(async (tx) => {
+        const [updatedSub] = await tx.update(assignmentSubmissions)
+          .set({ feedback })
+          .where(eq(assignmentSubmissions.id, Number(req.params.id)))
+          .returning();
+        const [createdNotif] = await tx.insert(notifications).values({
           userId: sub.studentId,
-          type: "assignment",
+          type: "system",
           title: `Assignment returned for revision`,
           message: `Your assignment "${assignment.title}" has been returned with feedback. Please review and resubmit.`,
           link: `/student-dashboard?tab=assignments`,
-        });
-        broadcastToUser(sub.studentId, { type: "notification", payload: notif });
-        // Also send a direct message so the student sees the full feedback text
-        await storage.createMessage({
+        }).returning();
+        await tx.insert(messagesTable).values({
           senderId: req.userId,
           receiverId: sub.studentId,
           content: `Your assignment "${assignment.title}" has been returned for revision.\n\nFeedback:\n${feedback}\n\nPlease revise and resubmit when ready.`,
+          conversationId: [req.userId, sub.studentId].sort().join("-"),
         });
-      } catch (notifErr: any) {
-        console.warn("[feedback] Notification failed for submission", req.params.id, ":", notifErr.message);
-      }
-      res.json(updated);
+        return { updated: updatedSub, notif: createdNotif };
+      });
+      // Broadcast the notification over WebSocket (outside the transaction — fire-and-forget)
+      broadcastToUser(sub.studentId, { type: "notification", payload: notif });
+      res.json({ ...updated, notified: true });
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
