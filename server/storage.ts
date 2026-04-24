@@ -604,6 +604,8 @@ export class DatabaseStorage implements IStorage {
         classId: bookings.classId,
         tutorId: bookings.tutorId,
         scheduledDate: bookings.scheduledDate,
+        scheduledTime: bookings.scheduledTime,
+        duration: bookings.duration,
         status: bookings.status,
         createdAt: bookings.createdAt,
         classTitle: classes.title,

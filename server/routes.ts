@@ -1983,7 +1983,12 @@ export async function registerRoutes(
   app.get("/api/admin/reports", coordinatorMiddleware, async (req: Request, res: Response) => {
     try {
       const reports = await storage.getSafeguardingReports();
-      res.json(reports);
+      const reporterIds = [...new Set(reports.filter(r => r.reporterId != null).map(r => r.reporterId as number))];
+      const reporterUsers = reporterIds.length > 0
+        ? await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, reporterIds))
+        : [];
+      const userNameMap: Record<number, string> = Object.fromEntries(reporterUsers.map(u => [u.id, u.name]));
+      res.json(reports.map(r => ({ ...r, reporterName: r.reporterId != null ? (userNameMap[r.reporterId] ?? null) : null })));
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

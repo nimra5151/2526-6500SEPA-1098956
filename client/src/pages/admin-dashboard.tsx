@@ -786,10 +786,10 @@ const AdminDashboard = () => {
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-foreground truncate">{activity.user || 'System'}</div>
-                          <div className="text-sm text-slate-600 dark:text-slate-400 truncate">{activity.action || activity.message}</div>
+                          <div className="font-semibold text-foreground truncate">{activity.userName || 'System'}</div>
+                          <div className="text-sm text-slate-600 dark:text-slate-400 truncate">{activity.details || activity.type?.replace(/_/g, ' ')}</div>
                         </div>
-                        <div className="text-xs text-slate-400 whitespace-nowrap">{activity.time || ''}</div>
+                        <div className="text-xs text-slate-400 whitespace-nowrap">{activity.createdAt ? new Date(activity.createdAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}</div>
                       </div>
                     ))}
                   </div>
@@ -1576,7 +1576,7 @@ const AdminDashboard = () => {
                             <p className="text-sm text-slate-700 dark:text-slate-300 mb-2">{report.description}</p>
                             <p className="text-xs text-slate-400">
                               Reported: {report.createdAt ? new Date(report.createdAt).toLocaleString() : 'N/A'}
-                              {report.reporterId && ` | Reporter ID: ${report.reporterId}`}
+                              {(report.reporterName || report.reporterId) && ` | Reporter: ${report.reporterName || `#${report.reporterId}`}`}
                             </p>
                           </div>
                           <div className="flex flex-col gap-2 shrink-0">
@@ -2022,8 +2022,8 @@ const AdminDashboard = () => {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Reporter ID:</span>
-                      <p className="text-sm text-foreground">{selectedReport.reporterId || 'N/A'}</p>
+                      <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Reporter:</span>
+                      <p className="text-sm text-foreground">{selectedReport.reporterName || (selectedReport.reporterId ? `#${selectedReport.reporterId}` : 'Anonymous')}</p>
                     </div>
                     <div>
                       <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Target:</span>
@@ -2249,7 +2249,7 @@ const AdminDashboard = () => {
               </div>
               <div className="p-6 space-y-4">
                 <p className="text-sm text-slate-600 dark:text-slate-400">
-                  Send an update to <strong className="text-foreground">Reporter #{notifyingReporter.reporterId}</strong> about their report.
+                  Send an update to <strong className="text-foreground">{notifyingReporter.reporterName || `Reporter #${notifyingReporter.reporterId}`}</strong> about their report.
                 </p>
                 <div>
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5 block">Message</label>
