@@ -1898,13 +1898,14 @@ export async function registerRoutes(
     try {
       const user = await storage.getUser(Number(req.params.id));
       if (!user) return res.status(404).json({ message: "User not found" });
-      // Only allow verification (set to true), not toggle
-      if (user.isVerified) {
-        return res.status(400).json({ message: "User is already verified" });
+      // Protect coordinator accounts from being modified by other coordinators
+      if (user.role === "coordinator" && Number(req.params.id) !== req.userId) {
+        return res.status(403).json({ message: "Cannot modify verification status of another coordinator account." });
       }
-      // For tutors/coordinators: also clear isPendingApproval when verifying, to keep state consistent
-      const patch: any = { isVerified: true };
-      if (user.role === "tutor" || user.role === "coordinator") patch.isPendingApproval = false;
+      const toVerify = !user.isVerified;
+      // When verifying a tutor/coordinator, also clear isPendingApproval to keep state consistent
+      const patch: any = { isVerified: toVerify };
+      if (toVerify && (user.role === "tutor" || user.role === "coordinator")) patch.isPendingApproval = false;
       const updated = await storage.updateUser(Number(req.params.id), patch);
       if (!updated) return res.status(404).json({ message: "User not found" });
       const { password: _, ...safeUser } = updated;
@@ -1918,6 +1919,7 @@ export async function registerRoutes(
     try {
       const user = await storage.getUser(Number(req.params.id));
       if (!user) return res.status(404).json({ message: "User not found" });
+      if (user.role === "coordinator") return res.status(403).json({ message: "Cannot block coordinator accounts." });
       const updated = await storage.updateUser(Number(req.params.id), { isBlocked: !user.isBlocked });
       if (!updated) return res.status(404).json({ message: "User not found" });
       const { password: _, ...safeUser } = updated;
@@ -1932,10 +1934,21 @@ export async function registerRoutes(
       const user = await storage.getUser(Number(req.params.id));
       if (!user) return res.status(404).json({ message: "User not found" });
       if (user.role !== "tutor" && user.role !== "coordinator") return res.status(400).json({ message: "Only tutor and coordinator accounts require approval" });
+      if (!user.isPendingApproval) return res.status(400).json({ message: "This account is not pending approval." });
+      // Prevent approving another coordinator's account (coordinator-self-service scenario)
+      if (user.role === "coordinator" && Number(req.params.id) !== req.userId) {
+        return res.status(403).json({ message: "Cannot approve another coordinator's account." });
+      }
       await storage.updateUser(Number(req.params.id), { isPendingApproval: false, isVerified: true });
-      // Send approval email + in-app notification (fire-and-forget)
       const isCoord = user.role === "coordinator";
-      sendTutorApprovedEmail(user.email, user.name).catch((err) => console.error("Email send failed:", err.message));
+      // Track email delivery result so the client can show accurate feedback
+      let emailSent = true;
+      try {
+        await sendTutorApprovedEmail(user.email, user.name);
+      } catch (emailErr: any) {
+        emailSent = false;
+        console.error("Approval email send failed:", emailErr.message);
+      }
       const approveLang = await getUserLang(storage, user.id);
       const approveText = getNotifText(isCoord ? "coordinator_approved" : "tutor_approved", approveLang);
       await storage.createNotification({
@@ -1945,7 +1958,7 @@ export async function registerRoutes(
         message: approveText.message,
         link: isCoord ? "/admin" : "/teacher-dashboard",
       }).then((notif) => broadcastToUser(user.id, { type: "notification", payload: notif })).catch(() => {});
-      res.json({ success: true, message: `${isCoord ? "Coordinator" : "Tutor"} approved` });
+      res.json({ success: true, message: `${isCoord ? "Coordinator" : "Tutor"} approved`, emailSent });
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
@@ -1955,10 +1968,22 @@ export async function registerRoutes(
       const user = await storage.getUser(Number(req.params.id));
       if (!user) return res.status(404).json({ message: "User not found" });
       if (user.role !== "tutor" && user.role !== "coordinator") return res.status(400).json({ message: "Only tutor and coordinator accounts can be rejected" });
+      if (!user.isPendingApproval) return res.status(400).json({ message: "This account is not pending approval." });
+      // Prevent rejecting another coordinator's account
+      if (user.role === "coordinator" && Number(req.params.id) !== req.userId) {
+        return res.status(403).json({ message: "Cannot reject another coordinator's account." });
+      }
       // Mark as blocked so they can't re-login without coordinator intervention
       await storage.updateUser(Number(req.params.id), { isPendingApproval: false, isBlocked: true });
-      sendTutorRejectedEmail(user.email, user.name, reason).catch((err) => console.error("Email send failed:", err.message));
-      res.json({ success: true, message: "Tutor application rejected" });
+      // Track email delivery result so the client can show accurate feedback
+      let emailSent = true;
+      try {
+        await sendTutorRejectedEmail(user.email, user.name, reason);
+      } catch (emailErr: any) {
+        emailSent = false;
+        console.error("Rejection email send failed:", emailErr.message);
+      }
+      res.json({ success: true, message: "Tutor application rejected", emailSent });
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
@@ -1973,6 +1998,8 @@ export async function registerRoutes(
 
   app.delete("/api/admin/classes/:id", coordinatorMiddleware, async (req: Request, res: Response) => {
     try {
+      const cls = await storage.getClass(Number(req.params.id));
+      if (!cls) return res.status(404).json({ message: "Class not found" });
       await storage.deleteClass(Number(req.params.id));
       res.json({ success: true });
     } catch (err: any) {
@@ -2082,11 +2109,17 @@ export async function registerRoutes(
   app.patch("/api/admin/users/:id/role", coordinatorMiddleware, async (req: Request, res: Response) => {
     try {
       const { role } = req.body;
+      if (!role) return res.status(400).json({ message: "role is required" });
       if (!['student', 'tutor', 'coordinator'].includes(role)) {
         return res.status(400).json({ message: "Invalid role. Must be student, tutor, or coordinator." });
       }
       const user = await storage.getUser(Number(req.params.id));
       if (!user) return res.status(404).json({ message: "User not found" });
+      // Prevent role changes on other coordinator accounts (privilege escalation / accidental lockout)
+      if (user.role === "coordinator" && Number(req.params.id) !== req.userId) {
+        return res.status(403).json({ message: "Cannot change the role of another coordinator account." });
+      }
+      if (user.role === role) return res.status(400).json({ message: `User already has the '${role}' role.` });
       // Cascade: if tutor is being demoted to student, cancel their active classes
       if (user.role === "tutor" && role === "student") {
         await db.update(classes)
@@ -2117,7 +2150,10 @@ export async function registerRoutes(
   // DELETE /api/admin/discussions/:id — admin delete any discussion
   app.delete("/api/admin/discussions/:id", coordinatorMiddleware, async (req: Request, res: Response) => {
     try {
-      await storage.deleteDiscussion(Number(req.params.id));
+      const discussionId = Number(req.params.id);
+      const [existing] = await db.select({ id: discussions.id }).from(discussions).where(eq(discussions.id, discussionId));
+      if (!existing) return res.status(404).json({ message: "Discussion not found" });
+      await storage.deleteDiscussion(discussionId);
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });

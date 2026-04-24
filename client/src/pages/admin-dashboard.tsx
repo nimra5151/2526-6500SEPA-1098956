@@ -160,9 +160,13 @@ const AdminDashboard = () => {
 
   const approveTutorMutation = useMutation({
     mutationFn: (userId: number) => authFetch(`/api/admin/users/${userId}/approve`, { method: 'PATCH' }),
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
-      toast({ title: 'Tutor approved', description: 'The tutor has been approved and notified by email.' });
+      if (data?.emailSent === false) {
+        toast({ title: 'Tutor approved', description: 'Approved, but the notification email could not be sent. Check your email settings.', variant: 'destructive' });
+      } else {
+        toast({ title: 'Tutor approved', description: 'The tutor has been approved and notified by email.' });
+      }
     },
     onError: (err: Error) => toast({ title: 'Approval failed', description: err.message, variant: 'destructive' }),
   });
@@ -170,11 +174,15 @@ const AdminDashboard = () => {
   const rejectTutorMutation = useMutation({
     mutationFn: ({ userId, reason }: { userId: number; reason: string }) =>
       authFetch(`/api/admin/users/${userId}/reject`, { method: 'PATCH', body: JSON.stringify({ reason }) }),
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
       setRejectingTutor(null);
       setRejectReason('');
-      toast({ title: 'Application rejected', description: 'The tutor has been notified.' });
+      if (data?.emailSent === false) {
+        toast({ title: 'Application rejected', description: 'Rejected, but the notification email could not be sent. Check your email settings.', variant: 'destructive' });
+      } else {
+        toast({ title: 'Application rejected', description: 'The tutor has been notified by email.' });
+      }
     },
     onError: (err: Error) => toast({ title: 'Rejection failed', description: err.message, variant: 'destructive' }),
   });
@@ -236,13 +244,21 @@ const AdminDashboard = () => {
 
   const bulkBlockMutation = useMutation({
     mutationFn: async (userIds: number[]) => {
-      await Promise.all(userIds.map(id => authFetch(`/api/admin/users/${id}/block`, { method: 'PATCH' })));
+      const results = await Promise.allSettled(
+        userIds.map(id => authFetch(`/api/admin/users/${id}/block`, { method: 'PATCH' }))
+      );
+      const failed = results.filter(r => r.status === 'rejected').length;
+      return { total: userIds.length, failed };
     },
-    onSuccess: () => {
+    onSuccess: ({ total, failed }) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
       setSelectedStudentIds(new Set());
       setSelectedTeacherIds(new Set());
-      toast({ title: 'Bulk action completed.' });
+      if (failed > 0) {
+        toast({ title: `Partial completion: ${total - failed} of ${total} updated.`, description: `${failed} user(s) could not be updated (they may be coordinator accounts).`, variant: 'destructive' });
+      } else {
+        toast({ title: 'Bulk action completed.', description: `${total} user(s) updated successfully.` });
+      }
     },
     onError: (err: Error) => toast({ title: 'Bulk action failed', description: err.message, variant: 'destructive' }),
   });
