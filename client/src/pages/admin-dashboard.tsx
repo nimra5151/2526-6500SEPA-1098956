@@ -794,10 +794,10 @@ const AdminDashboard = () => {
                         <div className="p-2.5 rounded-full bg-green-100 dark:bg-green-900/20">
                           {activity.type === 'signup' && <Users className="w-4 h-4 text-green-600" />}
                           {activity.type === 'booking' && <CheckCircle className="w-4 h-4 text-blue-600" />}
-                          {activity.type === 'class' && <BookOpen className="w-4 h-4 text-indigo-600" />}
+                          {(activity.type === 'class' || activity.type === 'class_created') && <BookOpen className="w-4 h-4 text-indigo-600" />}
                           {activity.type === 'review' && <Star className="w-4 h-4 text-yellow-600" />}
                           {activity.type === 'report' && <AlertTriangle className="w-4 h-4 text-red-600" />}
-                          {!['signup', 'booking', 'class', 'review', 'report'].includes(activity.type) && (
+                          {!['signup', 'booking', 'class', 'class_created', 'review', 'report'].includes(activity.type) && (
                             <Activity className="w-4 h-4 text-slate-600" />
                           )}
                         </div>
