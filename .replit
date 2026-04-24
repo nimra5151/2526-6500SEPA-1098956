@@ -53,3 +53,7 @@ ZOOM_CLIENT_SECRET = "HKl28IbzGMxfJJFuzAQMRDD1mDNu18UJ"
 PINECONE_API_KEY = "pcsk_78JNsL_UP4JKVVAfhtpB8F8Aemz5h24wLkghz7Yn3i8Y53uuFiKdoCy3bxTp6WyVNCQMeM"
 PINECONE_INDEX = "tutorbridge"
 APP_URL = "http://localhost:5000"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 120000
