@@ -36,6 +36,8 @@ import {
 const BADGE_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6'];
 
 export default function StudentDashboard() {
+  const { user } = useAuth();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('overview');
   const [isCreatingNote, setIsCreatingNote] = useState(false);
   const [newNote, setNewNote] = useState<{ classId: string; topic: string; content: string; tags: string }>({ classId: '', topic: '', content: '', tags: '' });
@@ -47,12 +49,7 @@ export default function StudentDashboard() {
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
   const [reviewingQuizResult, setReviewingQuizResult] = useState<QuizResult | null>(null);
-  // recently viewed classes (localStorage + API sync)
-  const [recentlyViewed, setRecentlyViewed] = useState<any[]>(() => {
-    try { return JSON.parse(localStorage.getItem('tutorbridge_recently_viewed') || '[]'); } catch { return []; }
-  });
-
-  // Load weeklyGoal + recentlyViewedClasses from settings API (overrides localStorage if available)
+  // Load weeklyGoal + recentlyViewedClasses from settings API
   const { data: userSettings } = useQuery<any>({
     queryKey: ['/api/settings'],
     queryFn: () => authFetch('/api/settings'),
@@ -62,25 +59,22 @@ export default function StudentDashboard() {
     if (typeof userSettings.weeklyGoal === 'number') {
       setGoalPerWeek(userSettings.weeklyGoal);
     }
-    if (Array.isArray(userSettings.recentlyViewedClasses) && userSettings.recentlyViewedClasses.length > 0) {
-      // Merge API list into localStorage format (IDs only from API, full objects from localStorage)
-      const localList: any[] = (() => { try { return JSON.parse(localStorage.getItem('tutorbridge_recently_viewed') || '[]'); } catch { return []; } })();
-      const merged = userSettings.recentlyViewedClasses
-        .map((id: number) => localList.find((c: any) => c.id === id))
-        .filter(Boolean);
-      if (merged.length > 0) setRecentlyViewed(merged);
-    }
-  }, [userSettings?.weeklyGoal, userSettings?.recentlyViewedClasses?.length]);
+  }, [userSettings?.weeklyGoal]);
 
-  // Refresh from localStorage when another tab updates it
-  useEffect(() => {
-    const refresh = () => {
-      try { setRecentlyViewed(JSON.parse(localStorage.getItem('tutorbridge_recently_viewed') || '[]')); } catch {}
-    };
-    window.addEventListener('focus', refresh);
-    window.addEventListener('storage', refresh);
-    return () => { window.removeEventListener('focus', refresh); window.removeEventListener('storage', refresh); };
-  }, []);
+  // Fetch recently viewed class details from the server using stored IDs
+  const recentlyViewedIds: number[] = Array.isArray(userSettings?.recentlyViewedClasses) ? userSettings.recentlyViewedClasses : [];
+  const { data: recentlyViewedClasses = [] } = useQuery<any[]>({
+    queryKey: ['/api/classes/recently-viewed', recentlyViewedIds.join(',')],
+    queryFn: async () => {
+      if (!recentlyViewedIds.length) return [];
+      const results = await Promise.all(
+        recentlyViewedIds.map((id: number) => authFetch(`/api/classes/${id}`).catch(() => null))
+      );
+      return results.filter(Boolean);
+    },
+    enabled: !!user && recentlyViewedIds.length > 0,
+    staleTime: 60_000,
+  });
   // Peer Help Board state
   const [peerHelpClassId, setPeerHelpClassId] = useState<string>('');
   const [peerHelpTopic, setPeerHelpTopic] = useState('');
@@ -93,9 +87,6 @@ export default function StudentDashboard() {
   const [sessionDate, setSessionDate] = useState('');
   const [sessionTime, setSessionTime] = useState('');
   const [sessionSubmitting, setSessionSubmitting] = useState(false);
-
-  const { user } = useAuth();
-  const { toast } = useToast();
 
   const { data: stats, isLoading: statsLoading, isError: statsError } = useQuery({
     queryKey: ['/api/dashboard/stats'],
@@ -209,6 +200,21 @@ export default function StudentDashboard() {
     staleTime: 30_000,
   });
 
+  const { data: myOfferedRequests = [], refetch: refetchMyOffers } = useQuery<any[]>({
+    queryKey: ['/api/peer-help-requests/my-offers', (enrolledClasses as any[]).map((c: any) => c.id).join(',')],
+    queryFn: async () => {
+      const classIds: number[] = (enrolledClasses as any[]).map((c: any) => c.id);
+      if (!classIds.length) return [];
+      const results = await Promise.all(
+        classIds.map((id: number) => authFetch(`/api/peer-help-requests?classId=${id}&status=matched`).catch(() => []))
+      );
+      const allMatched = (results as any[][]).flat();
+      return allMatched.filter((r: any) => r.helperId === user?.id);
+    },
+    enabled: !!user && activeTab === 'peer-help' && (enrolledClasses as any[]).length > 0,
+    staleTime: 30_000,
+  });
+
   const { data: mySessions = [], refetch: refetchSessions } = useQuery<any[]>({
     queryKey: ['/api/peer-sessions/mine'],
     queryFn: () => authFetch('/api/peer-sessions/mine'),
@@ -233,8 +239,8 @@ export default function StudentDashboard() {
   const cancelBookingMutation = useMutation({
     mutationFn: (bookingId: number) => authFetch(`/api/bookings/${bookingId}/cancel`, { method: 'PATCH' }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard', 'stats'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/dashboard/stats'] });
       toast({ title: 'Booking cancelled successfully' });
     },
     onError: (err: Error) => toast({ title: 'Failed to cancel booking', description: err.message, variant: 'destructive' }),
@@ -243,16 +249,16 @@ export default function StudentDashboard() {
   const removeFavoriteMutation = useMutation({
     mutationFn: (classId: number) => authFetch(`/api/favorites/${classId}`, { method: 'DELETE' }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['favorites'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/favorites'] });
       toast({ title: 'Removed from favorites' });
     },
     onError: (err: Error) => toast({ title: 'Failed to remove', description: err.message, variant: 'destructive' }),
   });
 
   const saveNoteMutation = useMutation({
-    mutationFn: (noteData: { classId: string; topic: string; content: string; tags: string }) => authFetch('/api/notes', { method: 'POST', body: JSON.stringify(noteData) }),
+    mutationFn: (noteData: { classId?: string; topic: string; content: string; tags: string[] }) => authFetch('/api/notes', { method: 'POST', body: JSON.stringify(noteData) }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notes'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/notes'] });
       setIsCreatingNote(false);
       setNewNote({ classId: '', topic: '', content: '', tags: '' });
       toast({ title: 'Note saved!' });
@@ -262,7 +268,7 @@ export default function StudentDashboard() {
 
   const deleteNoteMutation = useMutation({
     mutationFn: (noteId: number) => authFetch(`/api/notes/${noteId}`, { method: 'DELETE' }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notes'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/notes'] }),
     onError: () => toast({ title: 'Failed to delete note', variant: 'destructive' }),
   });
 
@@ -282,16 +288,27 @@ export default function StudentDashboard() {
   const completedBookings = Array.isArray(bookings) ? bookings.filter((b: any) => b.status === 'completed') : [];
   const totalHours = Array.isArray(bookings) ? bookings.reduce((acc: number, b: any) => acc + (Number(b.duration) || 0), 0) / 60 : 0;
 
-  // Build class → progress map
-  const progressMap: Record<number, any> = {};
-  (progress as any[]).forEach((p: any) => { progressMap[p.classId] = p; });
+  // Build class → aggregated progress map (sum across all lecture rows per class)
+  const progressMap: Record<number, { classId: number; completedLectures: number; totalLectures: number; totalWatchSeconds: number; completed: boolean }> = {};
+  (progress as any[]).forEach((p: any) => {
+    if (!progressMap[p.classId]) {
+      progressMap[p.classId] = { classId: p.classId, completedLectures: 0, totalLectures: p.totalLectures || 0, totalWatchSeconds: 0, completed: false };
+    }
+    const m = progressMap[p.classId];
+    if (p.completed) m.completedLectures += 1;
+    m.totalWatchSeconds += (p.watchTimeSeconds || 0);
+    if (p.totalLectures) m.totalLectures = Math.max(m.totalLectures, p.totalLectures);
+  });
+  Object.values(progressMap).forEach((m: any) => {
+    m.completed = m.totalLectures > 0 && m.completedLectures >= m.totalLectures;
+  });
 
   function getCompletionPct(cls: any) {
     const p = progressMap[cls.id];
     if (!p) return 0;
-    return cls.duration
-      ? Math.min(100, Math.round(((p.watchTimeSeconds || 0) / (cls.duration * 60)) * 100))
-      : p.completed ? 100 : 0;
+    if (p.totalLectures > 0) return Math.min(100, Math.round((p.completedLectures / p.totalLectures) * 100));
+    if (cls.duration) return Math.min(100, Math.round((p.totalWatchSeconds / (cls.duration * 60)) * 100));
+    return p.completed ? 100 : 0;
   }
 
   // ── Study streak ──────────────────────────────────────────────────────────
@@ -524,15 +541,14 @@ export default function StudentDashboard() {
                 <CardTitle className="text-base font-semibold flex items-center gap-2">
                   <Eye className="w-4 h-4 text-indigo-600" /> Recently Viewed
                 </CardTitle>
-                {recentlyViewed.length > 0 && (
+                {recentlyViewedClasses.length > 0 && (
                   <Button
                     variant="ghost"
                     size="sm"
                     className="text-xs text-slate-500 h-7"
                     onClick={() => {
-                      try { localStorage.removeItem('tutorbridge_recently_viewed'); } catch {}
                       authFetch('/api/settings', { method: 'PUT', body: JSON.stringify({ recentlyViewedClasses: [] }) }).catch(() => {});
-                      setRecentlyViewed([]);
+                      queryClient.setQueryData(['/api/settings'], (old: any) => old ? { ...old, recentlyViewedClasses: [] } : old);
                     }}
                   >
                     Clear
@@ -540,11 +556,11 @@ export default function StudentDashboard() {
                 )}
               </CardHeader>
               <CardContent className="p-5">
-                {recentlyViewed.length === 0 ? (
+                {recentlyViewedClasses.length === 0 ? (
                   <p className="text-sm text-slate-500 text-center py-4">No recently viewed classes yet. <Link href="/classes" className="text-indigo-600 hover:underline">Browse classes</Link> to get started.</p>
                 ) : (
                   <div className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1">
-                    {recentlyViewed.map((rc: any) => (
+                    {recentlyViewedClasses.map((rc: any) => (
                       <Link key={rc.id} href={`/classes/${rc.id}`}>
                         <div className="shrink-0 w-44 group cursor-pointer">
                           <div className="relative h-24 rounded-lg overflow-hidden bg-indigo-100 dark:bg-indigo-900 mb-2">
@@ -697,7 +713,7 @@ export default function StudentDashboard() {
                       {upcomingBookings.slice(0, 4).map((b: any) => (
                         <div key={b.id} className="px-6 py-3 flex items-center justify-between">
                           <div>
-                            <p className="text-sm font-medium text-slate-800 dark:text-white">{b.className || `Session #${b.id}`}</p>
+                            <p className="text-sm font-medium text-slate-800 dark:text-white">{b.classTitle || b.className || `Session #${b.id}`}</p>
                             <p className="text-xs text-slate-500">{new Date(b.scheduledDate).toLocaleDateString()}{b.scheduledTime && ` · ${b.scheduledTime}`}</p>
                           </div>
                           <Badge variant="outline" className={b.status === 'confirmed' ? 'border-green-500 text-green-700 dark:text-green-400' : 'border-amber-500 text-amber-700 dark:text-amber-400'}>
@@ -975,7 +991,7 @@ export default function StudentDashboard() {
                       <div className="flex items-center justify-between gap-4">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-3 mb-1">
-                            <h4 className="font-medium text-foreground text-sm">{b.className || `Session #${b.id}`}</h4>
+                            <h4 className="font-medium text-foreground text-sm">{b.classTitle || b.className || `Session #${b.id}`}</h4>
                             <Badge className={
                               b.status === 'confirmed' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
                               : b.status === 'completed' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
@@ -994,7 +1010,7 @@ export default function StudentDashboard() {
                             <>
                               <Certificate
                                 studentName={user?.name || 'Student'}
-                                courseName={b.className || 'Completed Course'}
+                                courseName={b.classTitle || b.className || 'Completed Course'}
                                 completionDate={new Date(b.scheduledDate).toLocaleDateString()}
                               />
                               <Button variant="outline" size="sm" className="border-amber-200 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/20 h-8 text-xs"
@@ -1037,7 +1053,7 @@ export default function StudentDashboard() {
               ) : (
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
                   {(favorites as any[]).map((fav: any) => {
-                    const cls = fav.class || fav;
+                    const cls = fav.class || { title: fav.classTitle, category: fav.classCategory, thumbnailUrl: fav.classThumbnail, id: fav.classId };
                     return (
                       <Card key={fav.id} className="border border-border/60 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow overflow-hidden group">
                         <div className="h-36 overflow-hidden bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center relative">
@@ -1227,6 +1243,49 @@ export default function StudentDashboard() {
 
           {/* ── ASSIGNMENTS ──────────────────────────────────────────────────── */}
           <TabsContent value="assignments" className="space-y-4">
+
+            {/* ── Upcoming Deadlines ── */}
+            <Card className="border border-border/60 dark:border-slate-800 shadow-sm">
+              <CardHeader className="border-b border-border/40 dark:border-slate-800 pb-4">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <CalendarClock className="w-4 h-4 text-rose-500" /> Upcoming Deadlines
+                  {!deadlinesLoading && (deadlines as any[]).length > 0 && (
+                    <Badge className="bg-rose-100 text-rose-700 ml-1">{(deadlines as any[]).length}</Badge>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {deadlinesLoading ? (
+                  <div className="p-4 space-y-2">{[0, 1, 2].map(i => <ListItemSkeleton key={i} />)}</div>
+                ) : deadlinesError ? (
+                  <p className="text-sm text-destructive px-6 py-4">Failed to load deadlines. Please refresh.</p>
+                ) : (deadlines as any[]).length === 0 ? (
+                  <div className="px-6 py-8 text-center text-sm text-slate-500">
+                    <CheckCircle className="w-8 h-8 mx-auto mb-2 text-emerald-400 opacity-50" />
+                    No upcoming deadlines in the next 14 days
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {(deadlines as any[]).map((d: any) => {
+                      const daysLeft = Math.ceil((new Date(d.dueDate).getTime() - Date.now()) / 86400000);
+                      const isUrgent = daysLeft <= 2;
+                      return (
+                        <div key={d.id} className={`flex items-center justify-between px-6 py-4 ${isUrgent ? 'bg-red-50/50 dark:bg-red-950/10' : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/30'} transition-colors`}>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-sm text-foreground truncate">{d.title}</p>
+                            <p className="text-xs text-slate-500 truncate mt-0.5">{d.className}</p>
+                            <p className="text-xs text-slate-400 mt-0.5">Due: {new Date(d.dueDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</p>
+                          </div>
+                          <Badge className={`ml-4 shrink-0 text-xs ${daysLeft === 0 ? 'bg-red-100 text-red-700' : daysLeft === 1 ? 'bg-red-100 text-red-700' : daysLeft <= 5 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                            {daysLeft === 0 ? 'Due today' : daysLeft === 1 ? 'Due tomorrow' : `${daysLeft} days left`}
+                          </Badge>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
             {/* ── Pending / To-Do Assignments ── */}
             <Card className="border border-border/60 dark:border-slate-800 shadow-sm">
@@ -1724,8 +1783,13 @@ export default function StudentDashboard() {
                             onClick={async () => {
                               try {
                                 await authFetch(`/api/peer-help-requests/${req.id}/offer`, { method: 'POST' });
-                                toast({ title: 'Offered to help!', description: `${req.studentName} has been notified. Send them a message to coordinate.` });
+                                toast({
+                                  title: 'Offer submitted — pending coordinator approval',
+                                  description: `${req.studentName} has been notified. Once they book a session, a coordinator must approve it before it begins.`,
+                                });
                                 refetchBoard();
+                                refetchSessions();
+                                refetchMyOffers();
                               } catch (e: any) {
                                 toast({ title: e.message || 'Failed', variant: 'destructive' });
                               }
@@ -1738,6 +1802,38 @@ export default function StudentDashboard() {
                       ))}
                     </div>
                   )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* My Pending Offers (helper view — offers awaiting requester to book) */}
+            {myOfferedRequests.length > 0 && (
+              <Card className="border border-border/60 dark:border-slate-800">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <HandHelping className="w-4 h-4 text-amber-500" />
+                    My Pending Offers
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {myOfferedRequests.map((req: any) => (
+                      <div key={req.id} className="flex items-start gap-3 p-3 rounded-lg border border-amber-100 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-950/10">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium text-foreground">{req.topic}</span>
+                            <Badge className="text-[10px] h-4 border-0 bg-amber-100 text-amber-700">
+                              Pending coordinator approval
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">{req.description}</p>
+                          <p className="text-[10px] text-slate-400 mt-1">
+                            Requested by {req.studentName} · waiting for them to book a session
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </CardContent>
               </Card>
             )}
@@ -1941,7 +2037,7 @@ export default function StudentDashboard() {
       {/* Quiz Review Modal */}
       {reviewingQuizResult && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setReviewingQuizResult(null)}>
-          <div className="bg-card rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-y-auto border border-border/60 dark:border-slate-700" onClick={(e) => e.stopPropagation()}>
+          <div role="dialog" aria-modal="true" aria-label="Quiz Review" className="bg-card rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-y-auto border border-border/60 dark:border-slate-700" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-border/40 dark:border-slate-800 sticky top-0 bg-card z-10">
               <div>
                 <h3 className="text-base font-semibold text-foreground">{(reviewingQuizResult as any).quizTitle || 'Quiz Review'}</h3>
@@ -2002,13 +2098,13 @@ export default function StudentDashboard() {
       {/* Leave Review Modal */}
       {reviewingBooking && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setReviewingBooking(null)}>
-          <div className="bg-card rounded-xl shadow-2xl w-full max-w-md border border-border/60 dark:border-slate-700" onClick={(e) => e.stopPropagation()}>
+          <div role="dialog" aria-modal="true" aria-label="Rate Your Session" className="bg-card rounded-xl shadow-2xl w-full max-w-md border border-border/60 dark:border-slate-700" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-border/40 dark:border-slate-800">
               <h3 className="text-base font-semibold text-foreground">Rate Your Session</h3>
               <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => setReviewingBooking(null)}><X className="w-4 h-4" /></Button>
             </div>
             <div className="p-6 space-y-4">
-              <p className="text-sm text-slate-600 dark:text-slate-400">Session: <span className="font-medium text-foreground">{(reviewingBooking as any).className || `Session #${reviewingBooking.id}`}</span></p>
+              <p className="text-sm text-slate-600 dark:text-slate-400">Session: <span className="font-medium text-foreground">{(reviewingBooking as any).classTitle || (reviewingBooking as any).className || `Session #${reviewingBooking.id}`}</span></p>
               <div>
                 <label className="text-xs font-medium text-slate-700 dark:text-slate-300 mb-2 block uppercase tracking-wide">Rating</label>
                 <div className="flex items-center gap-1">
@@ -2048,7 +2144,7 @@ export default function StudentDashboard() {
       {/* Create Note Modal */}
       {isCreatingNote && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setIsCreatingNote(false)}>
-          <div className="bg-card rounded-xl shadow-2xl w-full max-w-lg border border-border/60 dark:border-slate-700" onClick={(e) => e.stopPropagation()}>
+          <div role="dialog" aria-modal="true" aria-label="New Note" className="bg-card rounded-xl shadow-2xl w-full max-w-lg border border-border/60 dark:border-slate-700" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-border/40 dark:border-slate-800">
               <h3 className="text-base font-semibold text-foreground">New Note</h3>
               <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => setIsCreatingNote(false)}><X className="w-4 h-4" /></Button>
@@ -2085,7 +2181,10 @@ export default function StudentDashboard() {
               <Button
                 className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white"
                 disabled={!newNote.content || saveNoteMutation.isPending}
-                onClick={() => saveNoteMutation.mutate({ topic: newNote.topic, content: newNote.content, tags: newNote.tags, ...(newNote.classId ? { classId: newNote.classId } : {}) } as any)}
+                onClick={() => {
+                  const tagsArray = newNote.tags ? newNote.tags.split(',').map((t) => t.trim()).filter(Boolean) : [];
+                  saveNoteMutation.mutate({ topic: newNote.topic, content: newNote.content, tags: tagsArray, ...(newNote.classId ? { classId: newNote.classId } : {}) });
+                }}
               >
                 {saveNoteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Note'}
               </Button>

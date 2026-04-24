@@ -717,7 +717,7 @@ export async function registerRoutes(
     }
   });
 
-  // Upcoming assignment deadlines for the authenticated student (next 14 days)
+  // Upcoming assignment deadlines for the authenticated student (next 14 days, excluding already-submitted)
   app.get("/api/students/me/deadlines", authMiddleware, async (req: Request, res: Response) => {
     try {
       const enrolled = await storage.getEnrolledClasses(req.userId);
@@ -732,11 +732,21 @@ export async function registerRoutes(
           lte(assignments.dueDate, twoWeeks)
         )
       );
+      if (!upcoming.length) return res.json([]);
+      // Filter out assignments this student has already submitted
+      const submittedRows = await db
+        .select({ assignmentId: assignmentSubmissions.assignmentId })
+        .from(assignmentSubmissions)
+        .where(and(
+          eq(assignmentSubmissions.studentId, req.userId),
+          inArray(assignmentSubmissions.assignmentId, upcoming.map((a) => a.id))
+        ));
+      const submittedIds = new Set(submittedRows.map((r) => r.assignmentId));
       // Enrich with className
       const classMap: Record<number, string> = {};
       enrolled.forEach((c) => { if (c.id) classMap[c.id] = c.title; });
       const enriched = upcoming
-        .filter((a): a is typeof a & { classId: number; dueDate: Date } => !!a.classId && !!a.dueDate)
+        .filter((a): a is typeof a & { classId: number; dueDate: Date } => !!a.classId && !!a.dueDate && !submittedIds.has(a.id))
         .map((a) => ({ ...a, className: a.classId ? classMap[a.classId] : `Class #${a.classId ?? 'unknown'}` }))
         .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
       res.json(enriched);
