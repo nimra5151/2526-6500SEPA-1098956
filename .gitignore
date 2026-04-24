@@ -2,6 +2,10 @@ node_modules
 dist
 .local
 .DS_Store
+
+# Replit IDE files — safe to delete when running locally
+.replit
+replit.nix
 server/public
 vite.config.ts.*
 *.tar.gz

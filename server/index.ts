@@ -35,8 +35,7 @@ const isDev = process.env.NODE_ENV !== "production";
 
 app.use(helmet({
   crossOriginEmbedderPolicy: false,
-  // Allow Replit proxy to embed the app in an iframe in dev
-  frameguard: isDev ? false : { action: "sameorigin" },
+  frameguard: { action: "sameorigin" },
   contentSecurityPolicy: isDev ? false : {
     directives: {
       defaultSrc: ["'self'"],
@@ -51,25 +50,22 @@ app.use(helmet({
   strictTransportSecurity: isDev ? false : { maxAge: 31536000, includeSubDomains: true },
 }));
 
-// Build allowed origins: always include localhost + the Replit dev domain if present
-const allowedOrigins: (string | RegExp)[] = ["http://localhost:5000", "http://localhost:3000"];
+// Build allowed origins from environment — add your domain(s) to APP_URL
+const allowedOrigins: (string | RegExp)[] = [
+  "http://localhost:5000",
+  "http://localhost:3000",
+];
 if (process.env.APP_URL) allowedOrigins.push(process.env.APP_URL);
-if (process.env.REPLIT_DEV_DOMAIN) {
-  allowedOrigins.push(`https://${process.env.REPLIT_DEV_DOMAIN}`);
-}
-// Also allow any *.replit.dev and *.sisko.replit.dev sub-domain (for Replit proxy iframes)
-allowedOrigins.push(/\.replit\.dev$/);
-allowedOrigins.push(/\.sisko\.replit\.dev$/);
 
 app.use(cors({
-  origin: allowedOrigins,
+  origin: isDev ? true : allowedOrigins,  // in dev, allow all origins for easy local testing
   credentials: true,
   methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
 
 // ── Gzip / Brotli compression ────────────────────────────────────────────────
-app.use(compression({ threshold: 1024 })); // compress responses > 1KB
+app.use(compression({ threshold: 1024 }));
 
 // Serve uploaded files
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
@@ -93,10 +89,8 @@ app.use(express.urlencoded({ extended: false }));
 
 // ── Input sanitization ────────────────────────────────────────────────────────
 // Recursively strip HTML tags and trim strings from all request body fields.
-// Prevents stored XSS from user-supplied content.
 function sanitizeValue(val: unknown): unknown {
   if (typeof val === "string") {
-    // #28: Also decode Unicode-escaped angle brackets before stripping HTML tags
     const decoded = val.replace(/\u003c/gi, "<").replace(/\u003e/gi, ">");
     return decoded.replace(/<[^>]*>/g, "").trim();
   }
@@ -147,7 +141,6 @@ app.use((req, res, next) => {
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
-        // Remove sensitive fields before logging
         const sanitized = { ...capturedJsonResponse };
         delete sanitized.token;
         delete sanitized.password;
@@ -198,9 +191,7 @@ app.use((req, res, next) => {
     return res.status(status).json({ error: true, message, code });
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
+  // In production serve the pre-built client; in development use Vite dev server
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
   } else {
@@ -208,13 +199,8 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
 
-  // Graceful shutdown — ensures the port is released when the process exits
   const shutdown = () => {
     httpServer.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 3000).unref();
@@ -222,48 +208,7 @@ app.use((req, res, next) => {
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
 
-  // Kill whatever is holding the port by looking up the PID via /proc
-  const killPortHolder = (p: number) => {
-    try {
-      const hexPort = p.toString(16).padStart(4, "0").toUpperCase();
-      const lines = fs.readFileSync("/proc/net/tcp", "utf8").split("\n").slice(1);
-      for (const line of lines) {
-        const parts = line.trim().split(/\s+/);
-        if (!parts[1]) continue;
-        const portHex = parts[1].split(":")[1]?.toUpperCase();
-        if (portHex !== hexPort) continue;
-        const inode = parts[9];
-        for (const pid of fs.readdirSync("/proc").filter((x: string) => /^\d+$/.test(x))) {
-          try {
-            for (const fd of fs.readdirSync(`/proc/${pid}/fd`)) {
-              try {
-                if (fs.readlinkSync(`/proc/${pid}/fd/${fd}`).includes(`socket:[${inode}]`)) {
-                  process.kill(Number(pid), "SIGKILL");
-                  log(`Killed PID ${pid} holding port ${p}`);
-                }
-              } catch {}
-            }
-          } catch {}
-        }
-      }
-    } catch {}
-  };
-
-  const startServer = () => {
-    if (httpServer.listening) return;
-    httpServer.once("error", (err: NodeJS.ErrnoException) => {
-      if (err.code === "EADDRINUSE") {
-        log(`Port ${port} in use — killing holder and retrying...`);
-        killPortHolder(port);
-        setTimeout(startServer, 1500);
-      } else {
-        throw err;
-      }
-    });
-    httpServer.listen({ port, host: "0.0.0.0" }, () => {
-      log(`serving on port ${port}`);
-    });
-  };
-
-  startServer();
+  httpServer.listen({ port, host: "0.0.0.0" }, () => {
+    log(`serving on port ${port}`);
+  });
 })();
