@@ -2443,7 +2443,7 @@ export async function registerRoutes(
       if (!parsed.success) {
         return res.status(400).json({ error: true, message: parsed.error.errors[0]?.message || "Invalid input", code: "VALIDATION_ERROR" });
       }
-      const { title, description, content, duration, difficulty, classId, sections } = req.body;
+      const { title, description, content, duration, difficulty, classId, sections, attachments } = req.body;
       // Ownership check: only the class tutor can add lessons
       if (classId) {
         const cls = await storage.getClass(Number(classId));
@@ -2456,6 +2456,7 @@ export async function registerRoutes(
         classId: Number(classId),
         tutorId: req.userId,
         sections: sections || [],
+        ...(attachments !== undefined && { attachments }),
       }).returning();
       // Auto-ingest into RAG vector store (fire-and-forget)
       import("./rag/ingest.js").then(({ ingestLesson }) =>
@@ -2494,7 +2495,11 @@ export async function registerRoutes(
     try {
       const [lesson] = await db.select().from(lessons).where(eq(lessons.id, Number(req.params.id)));
       if (!lesson) return res.status(404).json({ message: "Lesson not found" });
-      if (lesson.tutorId !== req.userId) return res.status(403).json({ message: "Only the lesson owner can edit it" });
+      // Verify tutor owns the class that this lesson belongs to (not just the tutorId on the lesson record)
+      const [parentClass] = lesson.classId
+        ? await db.select({ tutorId: classes.tutorId }).from(classes).where(eq(classes.id, lesson.classId))
+        : [{ tutorId: lesson.tutorId }];
+      if (!parentClass || parentClass.tutorId !== req.userId) return res.status(403).json({ message: "Only the class owner can edit its lessons" });
       const { title, description, content, duration, difficulty, sections } = req.body;
       const [updated] = await db.update(lessons).set({
         ...(title !== undefined && { title }),
@@ -3324,7 +3329,7 @@ Give exactly 3 suggestions. Each "text" should describe their current progress c
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
-  // Return assignment for revision — saves feedback to submission without setting grade
+  // Return assignment for revision — saves feedback and notifies student atomically
   app.patch("/api/assignment-submissions/:id/feedback", authMiddleware, async (req, res) => {
     try {
       const { feedback } = req.body;
@@ -3336,10 +3341,30 @@ Give exactly 3 suggestions. Each "text" should describe their current progress c
       if (!assignment || assignment.tutorId !== req.userId) {
         return res.status(403).json({ message: "Forbidden" });
       }
+      // Save feedback and notify student in a single atomic step
       const [updated] = await db.update(assignmentSubmissions)
         .set({ feedback })
         .where(eq(assignmentSubmissions.id, Number(req.params.id)))
         .returning();
+      // Send in-app notification and message to student as part of the same operation
+      try {
+        const notif = await storage.createNotification({
+          userId: sub.studentId,
+          type: "assignment",
+          title: `Assignment returned for revision`,
+          message: `Your assignment "${assignment.title}" has been returned with feedback. Please review and resubmit.`,
+          link: `/student-dashboard?tab=assignments`,
+        });
+        broadcastToUser(sub.studentId, { type: "notification", payload: notif });
+        // Also send a direct message so the student sees the full feedback text
+        await storage.createMessage({
+          senderId: req.userId,
+          receiverId: sub.studentId,
+          content: `Your assignment "${assignment.title}" has been returned for revision.\n\nFeedback:\n${feedback}\n\nPlease revise and resubmit when ready.`,
+        });
+      } catch (notifErr: any) {
+        console.warn("[feedback] Notification failed for submission", req.params.id, ":", notifErr.message);
+      }
       res.json(updated);
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
@@ -3354,19 +3379,29 @@ Give exactly 3 suggestions. Each "text" should describe their current progress c
       if (assignment.tutorId !== req.userId) {
         return res.status(403).json({ message: "Only the assignment owner can grade submissions" });
       }
+      // Validate grade range against assignment's maxScore
+      const numGrade = Number(grade);
+      const maxScore = assignment.maxScore ?? 100;
+      if (isNaN(numGrade) || numGrade < 0 || numGrade > maxScore) {
+        return res.status(400).json({ message: `Grade must be between 0 and ${maxScore}` });
+      }
       const [updated] = await db.update(assignmentSubmissions)
-        .set({ grade: Number(grade), feedback, gradedAt: new Date() })
+        .set({ grade: numGrade, feedback, gradedAt: new Date() })
         .where(eq(assignmentSubmissions.id, Number(submissionId)))
         .returning();
-      // Send email to student
+      if (!updated) return res.status(404).json({ message: "Submission not found" });
+      // Send email to student — surface failure as warning flag instead of silently ignoring
+      let emailSent = false;
       try {
         const student = await storage.getUser(updated.studentId);
-        const assignment = await db.select().from(assignments).where(eq(assignments.id, updated.assignmentId));
-        if (student?.email && assignment[0]) {
-          await sendAssignmentGradedEmail(student.email, student.name, assignment[0].title, grade, feedback || "");
+        if (student?.email && assignment) {
+          await sendAssignmentGradedEmail(student.email, student.name, assignment.title, numGrade, feedback || "");
+          emailSent = true;
         }
-      } catch {}
-      res.json(updated);
+      } catch (emailErr: any) {
+        console.warn("[grade-with-email] Email failed for submission", submissionId, ":", emailErr.message);
+      }
+      res.json({ ...updated, emailSent });
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 

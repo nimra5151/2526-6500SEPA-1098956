@@ -240,13 +240,17 @@ export default function TeacherDashboard() {
         method: 'POST',
         body: JSON.stringify({ submissionId, grade, feedback }),
       }),
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['submissions', 'my-assignments'] });
       setGradingAssignment(null);
       setGradeValue('');
       setFeedbackValue('');
       setAiGradeSuggestion('');
-      toast({ title: 'Grade submitted and student notified.' });
+      if (data?.emailSent === false) {
+        toast({ title: 'Grade saved, but email notification failed.', description: 'The grade was recorded. The student was not emailed — check your email configuration.', variant: 'destructive' });
+      } else {
+        toast({ title: 'Grade submitted and student notified.' });
+      }
     },
     onError: (err: Error) => toast({ title: 'Failed to submit grade', description: err.message, variant: 'destructive' }),
   });
@@ -313,11 +317,12 @@ export default function TeacherDashboard() {
           difficulty: lesson.difficulty,
           classId: lesson.classId,
           sections: lesson.sections,
+          attachments: lesson.attachments,
         }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lessons', 'my'] });
-      toast({ title: 'Lesson duplicated!' });
+      toast({ title: 'Lesson duplicated with all attachments.' });
     },
     onError: (err: Error) => toast({ title: 'Failed to duplicate lesson', description: err.message, variant: 'destructive' }),
   });
@@ -327,7 +332,12 @@ export default function TeacherDashboard() {
     mutationFn: ({ classId, title, message }: { classId: number; title: string; message: string }) =>
       authFetch(`/api/classes/${classId}/announce`, { method: 'POST', body: JSON.stringify({ title, message }) }),
     onSuccess: (data: any) => {
-      toast({ title: `Announcement sent to ${data.sent} student${data.sent !== 1 ? 's' : ''}.` });
+      const failed = (data.total || 0) - (data.sent || 0);
+      if (failed > 0) {
+        toast({ title: `Delivered to ${data.sent} of ${data.total} students`, description: `${failed} student${failed !== 1 ? 's' : ''} could not be notified.`, variant: 'destructive' });
+      } else {
+        toast({ title: `Announcement delivered to ${data.sent} of ${data.total} student${data.total !== 1 ? 's' : ''}.` });
+      }
       setAnnouncingClass(null); setAnnounceTitle(''); setAnnounceMessage('');
     },
     onError: (err: Error) => toast({ title: 'Announcement failed', description: err.message, variant: 'destructive' }),
@@ -365,21 +375,12 @@ export default function TeacherDashboard() {
   });
 
   const returnAssignmentMutation = useMutation({
-    mutationFn: async ({ submissionId, studentId, assignmentTitle, feedback }: { submissionId: number; studentId: number; assignmentTitle: string; feedback: string }) => {
-      // Save feedback to the submission record so student sees it in their dashboard
-      await authFetch(`/api/assignment-submissions/${submissionId}/feedback`, {
+    mutationFn: ({ submissionId, studentId: _studentId, assignmentTitle: _assignmentTitle, feedback }: { submissionId: number; studentId: number; assignmentTitle: string; feedback: string }) =>
+      // Backend now handles saving feedback and notifying the student atomically
+      authFetch(`/api/assignment-submissions/${submissionId}/feedback`, {
         method: 'PATCH',
         body: JSON.stringify({ feedback }),
-      });
-      // Also notify via message
-      await authFetch('/api/messages', {
-        method: 'POST',
-        body: JSON.stringify({
-          receiverId: studentId,
-          content: `Your assignment "${assignmentTitle}" has been returned for revision.\n\nFeedback from your tutor:\n${feedback}\n\nPlease revise and resubmit when ready.`,
-        }),
-      });
-    },
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['submissions', 'my-assignments'] });
       setGradingAssignment(null);
@@ -1396,8 +1397,23 @@ export default function TeacherDashboard() {
                                 variant="outline"
                                 onClick={() => {
                                 const quiz = (myQuizzes as any[]).find((q: any) => q.id === result.quizId);
-                                const questions: any[] = (() => { try { return Array.isArray(quiz?.questions) ? quiz.questions : JSON.parse(quiz?.questions || '[]'); } catch { return []; } })();
-                                const storedAnswers: Record<string, number> = (() => { try { return result.answers ? JSON.parse(result.answers) : {}; } catch { return {}; } })();
+                                const parseQuestions = (raw: any): any[] => {
+                                  if (!raw) return [];
+                                  if (Array.isArray(raw)) return raw;
+                                  if (typeof raw === 'object') return [raw];
+                                  try {
+                                    const parsed = JSON.parse(raw);
+                                    if (Array.isArray(parsed)) return parsed;
+                                    if (parsed && typeof parsed === 'object') return [parsed];
+                                  } catch {}
+                                  return [];
+                                };
+                                const questions: any[] = parseQuestions(quiz?.questions);
+                                const storedAnswers: Record<string, number> = (() => {
+                                  if (!result.answers) return {};
+                                  if (typeof result.answers === 'object' && !Array.isArray(result.answers)) return result.answers as Record<string, number>;
+                                  try { return JSON.parse(result.answers); } catch { return {}; }
+                                })();
                                 const correctAnswers = questions.filter((q: any, idx: number) => storedAnswers[idx] === q.correctAnswer).length;
                                 setSelectedQuizResult({ ...result, student: result.studentName || `Student #${result.studentId}`, studentId: result.studentId, quiz: result.quizTitle, correctAnswers, totalQuestions: questions.length, questions, storedAnswers, timeTaken: '—', submittedAt: result.completedAt ? new Date(result.completedAt).toLocaleString() : '—', className: '' });
                               }}

@@ -942,7 +942,7 @@ export class DatabaseStorage implements IStorage {
         classCount: classList.length,
         upcomingCount: bookingsList.length,
         completedCount: completedList.length,
-        totalHours: completedList.reduce((sum, b) => sum + (b.duration || 60), 0) / 60,
+        totalHours: completedList.reduce((sum, b) => sum + (b.duration != null ? b.duration : 60), 0) / 60,
         avgRating: Number(user?.rating || 0),
         totalStudents: uniqueStudents.size,
         recentReviews,
