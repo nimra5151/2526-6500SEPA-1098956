@@ -2169,10 +2169,12 @@ const AdminDashboard = () => {
                       <UserCheck className="w-4 h-4 mr-2" />
                       {selectedUser.isVerified ? 'Revoke Verification' : 'Verify User'}
                     </Button>
-                    <Button variant="outline" className="w-full text-violet-600 border-violet-200 hover:bg-violet-50"
-                      onClick={() => { setChangingRoleUser(selectedUser); setNewRole(selectedUser.role); setSelectedUser(null); }}>
-                      <UserCog className="w-4 h-4 mr-2" /> Change Role
-                    </Button>
+                    {selectedUser.role !== 'coordinator' && (
+                      <Button variant="outline" className="w-full text-violet-600 border-violet-200 hover:bg-violet-50"
+                        onClick={() => { setChangingRoleUser(selectedUser); setNewRole(selectedUser.role); setSelectedUser(null); }}>
+                        <UserCog className="w-4 h-4 mr-2" /> Change Role
+                      </Button>
+                    )}
                     {selectedUser.role !== 'coordinator' && (
                       <Button variant="outline" className="w-full text-red-700 border-red-200 hover:bg-red-50"
                         onClick={() => { setDeletingUser(selectedUser); setSelectedUser(null); }}>

@@ -10,7 +10,7 @@ export const bookingStatusEnum = pgEnum("booking_status", ["pending", "confirmed
 export const notificationTypeEnum = pgEnum("notification_type", ["booking", "message", "reminder", "review", "system"]);
 export const courseTypeEnum = pgEnum("course_type", ["on-demand", "live", "upcoming", "recorded"]);
 export const reportTypeEnum = pgEnum("report_type", ["harassment", "inappropriate_content", "safety_concern", "other"]);
-export const reportTargetEnum = pgEnum("report_target", ["user", "class", "message"]);
+export const reportTargetEnum = pgEnum("report_target", ["user", "class", "message", "quiz", "discussion"]);
 export const reportStatusEnum = pgEnum("report_status", ["pending", "investigating", "resolved", "dismissed"]);
 
 export const users = pgTable("users", {
