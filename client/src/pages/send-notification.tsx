@@ -29,6 +29,13 @@ export default function SendNotification() {
     queryFn: () => authFetch("/api/admin/notifications?limit=5"),
   });
 
+  const typeToDbType: Record<string, string> = {
+    info: "system",
+    success: "system",
+    warning: "reminder",
+    urgent: "system",
+  };
+
   const sendNotification = async () => {
     setSending(true);
     setSentCount(null);
@@ -42,7 +49,7 @@ export default function SendNotification() {
           title: notification.title,
           message: notification.message,
           recipients: recipientsValue,
-          type: notification.type ==="urgent" ?"system" : notification.type,
+          type: typeToDbType[notification.type] ?? "system",
         }),
       });
       setSentCount(data.sent);

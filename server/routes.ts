@@ -2037,8 +2037,11 @@ export async function registerRoutes(
   // ADMIN - Bulk/targeted notifications
   app.post("/api/admin/notify", coordinatorMiddleware, async (req, res) => {
     try {
-      const { title, message, type = "system", recipients = "all" } = req.body;
+      const { title, message, recipients = "all" } = req.body;
       if (!title || !message) return res.status(400).json({ message: "title and message required" });
+      const validTypes = ["booking", "message", "reminder", "review", "system"];
+      const rawType = req.body.type ?? "system";
+      const type = validTypes.includes(rawType) ? rawType : "system";
       const allUsers = await storage.getAllUsers();
       const NOTIFY_RATE_LIMIT = 2000; // max users per notification request
       const targets = allUsers.filter((u) => {
