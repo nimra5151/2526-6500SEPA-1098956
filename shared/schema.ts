@@ -526,8 +526,9 @@ export const insertAssignmentSchema = createInsertSchema(assignments).omit({
 }).extend({
   title: z.string().min(1, "Title is required").max(200, "Title too long"),
   maxScore: z.number().int().min(1).max(1000).optional(),
-  classId: z.number().int().positive(),
+  classId: z.number().int().positive().optional().nullable(),
   tutorId: z.number().int().positive(),
+  dueDate: z.union([z.date(), z.string().transform(s => s ? new Date(s) : null), z.null()]).optional(),
 });
 
 export const loginSchema = z.object({

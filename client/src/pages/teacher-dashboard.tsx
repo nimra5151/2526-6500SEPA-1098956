@@ -1008,13 +1008,13 @@ export default function TeacherDashboard() {
             </div>
 
             {(() => {
-              const studentMap: Record<string, { studentId: number; classId: number; className: string; sessionCount: number }> = {};
+              const studentMap: Record<string, { studentId: number; studentName: string | null; classId: number; className: string; sessionCount: number }> = {};
               (myBookings || []).forEach((b: any) => {
                 if (!b.studentId) return;
                 const cls = (myClasses || []).find((c: any) => c.id === b.classId);
                 const key = `${b.classId}-${b.studentId}`;
                 if (!studentMap[key]) {
-                  studentMap[key] = { studentId: b.studentId, classId: b.classId, className: cls?.title || `Class #${b.classId}`, sessionCount: 0 };
+                  studentMap[key] = { studentId: b.studentId, studentName: b.studentName || null, classId: b.classId, className: cls?.title || `Class #${b.classId}`, sessionCount: 0 };
                 }
                 studentMap[key].sessionCount++;
               });
@@ -1059,10 +1059,10 @@ export default function TeacherDashboard() {
                               <td className="px-6 py-4">
                                 <div className="flex items-center gap-3">
                                   <div className="w-8 h-8 rounded-full bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center">
-                                    <span className="text-sm font-bold text-violet-600 dark:text-violet-400">S</span>
+                                    <span className="text-sm font-bold text-violet-600 dark:text-violet-400">{row.studentName?.charAt(0).toUpperCase() || 'S'}</span>
                                   </div>
                                   <div>
-                                    <p className="font-semibold text-foreground">Student #{row.studentId}</p>
+                                    <p className="font-semibold text-foreground">{row.studentName || `Student #${row.studentId}`}</p>
                                     <Link href={`/profile/${row.studentId}`}>
                                       <span className="text-xs text-indigo-600 hover:underline cursor-pointer">View Profile</span>
                                     </Link>
@@ -1124,14 +1124,14 @@ export default function TeacherDashboard() {
                           <div key={booking.id} className="flex items-center justify-between p-4 rounded-lg border hover:border-indigo-200 dark:hover:border-indigo-900 transition-colors gap-4">
                             <div className="flex-1 min-w-0">
                               <h4 className="font-semibold text-foreground">
-                                {(booking as any).className || `Session #${booking.id}`}
+                                  {(booking as any).classTitle || `Session #${booking.id}`}
                               </h4>
                               <p className="text-sm text-slate-600 dark:text-slate-400">
                                 {new Date(booking.scheduledDate).toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                                 {booking.scheduledTime && ` at ${booking.scheduledTime}`}
                               </p>
                               <p className="text-xs text-slate-500 mt-1">
-                                Duration: {booking.duration || 60} min · Student #{booking.studentId}
+                                Duration: {booking.duration || 60} min · {(booking as any).studentName || `Student #${booking.studentId}`}
                               </p>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
@@ -1173,13 +1173,13 @@ export default function TeacherDashboard() {
                           <div key={booking.id} className="flex items-center justify-between p-4 rounded-lg border transition-colors">
                             <div>
                               <h4 className="font-semibold text-foreground">
-                                {(booking as any).className || `Session #${booking.id}`}
+                                  {(booking as any).classTitle || `Session #${booking.id}`}
                               </h4>
                               <p className="text-sm text-slate-600 dark:text-slate-400">
                                 {new Date(booking.scheduledDate).toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                                 {booking.scheduledTime && ` at ${booking.scheduledTime}`}
                               </p>
-                              <p className="text-xs text-slate-400 mt-0.5">{booking.duration || 60} min · Student #{booking.studentId}</p>
+                              <p className="text-xs text-slate-400 mt-0.5">{booking.duration || 60} min · {(booking as any).studentName || `Student #${booking.studentId}`}</p>
                             </div>
                             <Badge className="bg-emerald-100 text-emerald-700">
                               <CheckCircle className="w-3 h-3 mr-1" />

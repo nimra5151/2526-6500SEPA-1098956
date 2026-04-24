@@ -2678,8 +2678,9 @@ export async function registerRoutes(
       const parsed = insertAssignmentSchema.safeParse({
         ...req.body,
         tutorId: req.userId,
-        classId: req.body.classId ? Number(req.body.classId) : null,
+        classId: req.body.classId ? Number(req.body.classId) : undefined,
         maxScore: req.body.maxScore ? Number(req.body.maxScore) : undefined,
+        dueDate: req.body.dueDate ? new Date(req.body.dueDate) : null,
       });
       if (!parsed.success) {
         return res.status(400).json({ error: true, message: parsed.error.errors[0]?.message || "Invalid input", code: "VALIDATION_ERROR" });
