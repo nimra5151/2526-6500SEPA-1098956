@@ -35,7 +35,7 @@ const isDev = process.env.NODE_ENV !== "production";
 
 app.use(helmet({
   crossOriginEmbedderPolicy: false,
-  frameguard: { action: "sameorigin" },
+  frameguard: isDev ? false : { action: "sameorigin" },
   contentSecurityPolicy: isDev ? false : {
     directives: {
       defaultSrc: ["'self'"],
