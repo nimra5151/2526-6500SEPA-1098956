@@ -264,17 +264,23 @@ export function AIStudyBuddy({ classTitle, classId, onClose }: AIStudyBuddyProps
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 20, scale: 0.95 }}
       className="fixed bottom-6 right-6 z-50"
-      style={{ width: Math.min(chatWidth, window.innerWidth - 48) }}
     >
+      {/* Sizing wrapper — Framer Motion does not control width/height here */}
       <div
-        className="absolute -top-2 -left-2 w-5 h-5 rounded-full bg-purple-500/60 hover:bg-purple-500 cursor-nw-resize flex items-center justify-center z-10 select-none"
-        onMouseDown={startResize}
-        title="Drag to resize"
+        className="relative"
+        style={{ width: Math.min(chatWidth, window.innerWidth - 48) }}
       >
-        <svg width="8" height="8" viewBox="0 0 8 8" fill="white">
-          <circle cx="2" cy="2" r="1.2"/><circle cx="6" cy="2" r="1.2"/><circle cx="2" cy="6" r="1.2"/><circle cx="6" cy="6" r="1.2"/>
-        </svg>
-      </div>
+        {/* Resize handle — top-left corner, drag to expand width left / height up */}
+        <div
+          className="absolute -top-3 -left-3 w-7 h-7 rounded-full bg-purple-600 hover:bg-purple-500 shadow-lg cursor-nw-resize flex items-center justify-center z-20 select-none border-2 border-white/30"
+          onMouseDown={startResize}
+          title="Drag to resize chat"
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="white" opacity="0.9">
+            <circle cx="2.5" cy="2.5" r="1.4"/><circle cx="7.5" cy="2.5" r="1.4"/>
+            <circle cx="2.5" cy="7.5" r="1.4"/><circle cx="7.5" cy="7.5" r="1.4"/>
+          </svg>
+        </div>
       <Card className="border-2 shadow-2xl bg-white dark:bg-slate-900 border-purple-200 dark:border-purple-800">
         <CardHeader className="pb-3 border-b bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/50 dark:to-pink-950/50">
           <div className="flex items-center justify-between">
@@ -486,6 +492,7 @@ export function AIStudyBuddy({ classTitle, classId, onClose }: AIStudyBuddyProps
           </div>
         </CardContent>
       </Card>
+      </div>
     </motion.div>
   );
 }
