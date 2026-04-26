@@ -2275,6 +2275,64 @@ export async function registerRoutes(
     }
   });
 
+  // GET quizzes for current student across all enrolled classes (with attempt status)
+  app.get("/api/quizzes/for-student", authMiddleware, async (req, res) => {
+    try {
+      const studentId = req.userId;
+      const enrolledBookings = await db.select({ classId: bookings.classId })
+        .from(bookings)
+        .where(and(
+          eq(bookings.studentId, studentId),
+          ne(bookings.status, "cancelled"),
+          ne(bookings.status, "no-show")
+        ));
+      const enrolledClassIds = Array.from(new Set(
+        enrolledBookings.map((b: any) => b.classId).filter(Boolean)
+      )) as number[];
+      if (!enrolledClassIds.length) return res.json([]);
+
+      const classQuizzes = await db.select().from(quizzes)
+        .where(inArray(quizzes.classId, enrolledClassIds))
+        .orderBy(desc(quizzes.id));
+      if (!classQuizzes.length) return res.json([]);
+
+      const quizIds = classQuizzes.map((q: any) => q.id);
+      const myResults = await db.select({
+        quizId: quizResults.quizId,
+        score: quizResults.score,
+        passed: quizResults.passed,
+        completedAt: quizResults.completedAt,
+      }).from(quizResults)
+        .where(and(
+          inArray(quizResults.quizId, quizIds),
+          eq(quizResults.studentId, studentId)
+        ));
+
+      const resultMap = new Map<number, any>();
+      for (const r of myResults) {
+        if (!resultMap.has(r.quizId!) || new Date(r.completedAt!) > new Date(resultMap.get(r.quizId!).completedAt)) {
+          resultMap.set(r.quizId!, r);
+        }
+      }
+
+      const result = classQuizzes.map((q: any) => {
+        const attempt = resultMap.get(q.id);
+        const safeQuestions = Array.isArray(q.questions)
+          ? (q.questions as any[]).map(({ correctAnswer, ...rest }: any) => rest)
+          : q.questions;
+        return {
+          ...q,
+          questions: safeQuestions,
+          attempted: !!attempt,
+          lastScore: attempt?.score ?? null,
+          lastPassed: attempt?.passed ?? null,
+          lastAttemptedAt: attempt?.completedAt ?? null,
+        };
+      });
+      res.json(result);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   // GET single quiz by ID
   app.get("/api/quizzes/:id", authMiddleware, async (req, res) => {
     try {

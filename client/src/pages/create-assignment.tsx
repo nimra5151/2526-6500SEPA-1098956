@@ -14,6 +14,10 @@ import type { Class } from '@shared/schema';
 
 export default function CreateAssignment() {
   const search = useSearch();
+  const params = new URLSearchParams(search);
+  const assignmentId = params.get('assignmentId');
+  const isEditing = !!assignmentId;
+
   const [assignment, setAssignment] = useState({
     title: '',
     description: '',
@@ -21,13 +25,14 @@ export default function CreateAssignment() {
     dueDate: '',
     dueTime: '',
     maxPoints: 100,
-    classId: new URLSearchParams(search).get('classId') || '',
+    classId: params.get('classId') || '',
     allowLateSubmission: true
   });
   const [myClasses, setMyClasses] = useState<Class[]>([]);
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiGenerationNote, setAiGenerationNote] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [loadingExisting, setLoadingExisting] = useState(isEditing);
   const [uploadedFileName, setUploadedFileName] = useState('');
   const [uploadedFileUrl, setUploadedFileUrl] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -60,6 +65,32 @@ export default function CreateAssignment() {
     authFetch("/api/classes/my/teaching").then(setMyClasses).catch(() => toast({ title: "Failed to load classes", variant: "destructive" }));
   }, []);
 
+  useEffect(() => {
+    if (!assignmentId) return;
+    setLoadingExisting(true);
+    authFetch(`/api/assignments/${assignmentId}`)
+      .then((data: any) => {
+        const dueDate = data.dueDate ? new Date(data.dueDate).toISOString().split('T')[0] : '';
+        const dueTime = data.dueDate ? new Date(data.dueDate).toTimeString().slice(0, 5) : '';
+        setAssignment({
+          title: data.title || '',
+          description: data.description || '',
+          instructions: data.instructions || '',
+          dueDate,
+          dueTime,
+          maxPoints: data.maxScore ?? 100,
+          classId: data.classId ? String(data.classId) : '',
+          allowLateSubmission: data.allowLateSubmission ?? true,
+        });
+        if (data.fileUrl) {
+          setUploadedFileUrl(data.fileUrl);
+          setUploadedFileName(data.fileUrl.split('/').pop() || 'Attached file');
+        }
+      })
+      .catch(() => toast({ title: "Failed to load assignment", variant: "destructive" }))
+      .finally(() => setLoadingExisting(false));
+  }, [assignmentId]);
+
   const handleSave = async () => {
     if (!assignment.title) {
       toast({ title:"Please enter an assignment title", variant:"destructive" });
@@ -67,30 +98,39 @@ export default function CreateAssignment() {
     }
     if (assignment.dueDate) {
       const due = new Date(`${assignment.dueDate}T${assignment.dueTime || "23:59"}`);
-      if (due < new Date()) {
+      if (!isEditing && due < new Date()) {
         toast({ title: "Due date must be in the future", variant: "destructive" });
         return;
       }
     }
     setSaving(true);
     try {
-      await authFetch("/api/assignments", {
-        method:"POST",
-        body: JSON.stringify({
-          title: assignment.title,
-          description: assignment.description,
-          instructions: assignment.instructions,
-          dueDate: assignment.dueDate
-            ? new Date(`${assignment.dueDate}T${assignment.dueTime ||"23:59"}`).toISOString()
-            : null,
-          maxScore: assignment.maxPoints,
-          classId: assignment.classId ? Number(assignment.classId) : null,
-          allowLateSubmission: assignment.allowLateSubmission,
-          fileUrl: uploadedFileUrl || undefined,
-        }),
-      });
-      toast({ title:"Assignment saved successfully!" });
-      setLocation("/teacher-dashboard");
+      const body = {
+        title: assignment.title,
+        description: assignment.description,
+        instructions: assignment.instructions,
+        dueDate: assignment.dueDate
+          ? new Date(`${assignment.dueDate}T${assignment.dueTime ||"23:59"}`).toISOString()
+          : null,
+        maxScore: assignment.maxPoints,
+        classId: assignment.classId ? Number(assignment.classId) : null,
+        allowLateSubmission: assignment.allowLateSubmission,
+        fileUrl: uploadedFileUrl || undefined,
+      };
+      if (isEditing) {
+        await authFetch(`/api/assignments/${assignmentId}`, {
+          method:"PATCH",
+          body: JSON.stringify(body),
+        });
+        toast({ title:"Assignment updated successfully!" });
+      } else {
+        await authFetch("/api/assignments", {
+          method:"POST",
+          body: JSON.stringify(body),
+        });
+        toast({ title:"Assignment saved successfully!" });
+      }
+      setLocation("/teacher-dashboard?tab=assignments");
     } catch (err: Error | unknown) {
       toast({ title: (err as Error).message || "Failed to save", variant:"destructive" });
     } finally {
@@ -157,22 +197,33 @@ export default function CreateAssignment() {
     }
   };
 
+  if (loadingExisting) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-slate-600 dark:text-slate-400 text-sm">Loading assignment...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-4xl font-bold text-slate-900 dark:text-white mb-2">
-              Create Assignment
+              {isEditing ? 'Edit Assignment' : 'Create Assignment'}
             </h1>
             <p className="text-slate-600 dark:text-slate-400">
-              Create and manage student assignments with AI assistance
+              {isEditing ? 'Update the assignment details below' : 'Create and manage student assignments with AI assistance'}
             </p>
           </div>
           <div className="flex gap-3">
             <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={handleSave} disabled={saving}>
               <Save className="w-4 h-4 mr-2" />
-              {saving ?"Saving..." :"Save Assignment"}
+              {saving ? (isEditing ? 'Updating...' : 'Saving...') : (isEditing ? 'Update Assignment' : 'Save Assignment')}
             </Button>
           </div>
         </div>

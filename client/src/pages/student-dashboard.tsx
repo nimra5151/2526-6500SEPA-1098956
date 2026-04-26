@@ -133,6 +133,13 @@ export default function StudentDashboard() {
     staleTime: 60_000,
   });
 
+  const { data: availableQuizzes = [], isLoading: availableQuizzesLoading } = useQuery({
+    queryKey: ['/api/quizzes/for-student'],
+    queryFn: () => authFetch('/api/quizzes/for-student'),
+    enabled: !!user,
+    staleTime: 60_000,
+  });
+
   const { data: mySubmissions = [], isLoading: submissionsLoading, isError: submissionsError } = useQuery({
     queryKey: ['/api/assignment-submissions/my'],
     queryFn: () => authFetch('/api/assignment-submissions/my'),
@@ -506,6 +513,8 @@ export default function StudentDashboard() {
               reviewingQuizResult={reviewingQuizResult}
               setReviewingQuizResult={setReviewingQuizResult}
               reviewQuizData={reviewQuizData}
+              availableQuizzes={availableQuizzes as any[]}
+              availableQuizzesLoading={availableQuizzesLoading}
             />
           </TabsContent>
 

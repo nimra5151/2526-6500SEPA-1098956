@@ -19,7 +19,7 @@ import {
   Calendar, MessageSquare,
   Plus, Video, Bell, Wand2, Star, Loader2, X, Download, ClipboardList,
   Flame, Target, Bot, MessageCircle, ChevronRight, Sparkles,
-  Flag, GraduationCap, Edit, Archive, RotateCcw, Megaphone
+  Flag, GraduationCap, Edit, Archive, RotateCcw, Megaphone, Trash2
 } from 'lucide-react';
 import { DashboardSkeleton, StatCard, PageHeader, ClassCardListSkeleton, ListItemSkeleton, EmptyState } from '@/components/skeleton-loader';
 import { StaggeredStatGrid } from '@/components/dashboard-ui';
@@ -253,6 +253,25 @@ export default function TeacherDashboard() {
       }
     },
     onError: (err: Error) => toast({ title: 'Failed to submit grade', description: err.message, variant: 'destructive' }),
+  });
+
+  const deleteQuizMutation = useMutation({
+    mutationFn: (quizId: number) => authFetch(`/api/quizzes/${quizId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quizzes', 'my'] });
+      queryClient.invalidateQueries({ queryKey: ['quiz-results', 'my-quizzes'] });
+      toast({ title: 'Quiz deleted.' });
+    },
+    onError: (err: Error) => toast({ title: 'Failed to delete quiz', description: err.message, variant: 'destructive' }),
+  });
+
+  const deleteAssignmentMutation = useMutation({
+    mutationFn: (assignmentId: number) => authFetch(`/api/assignments/${assignmentId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['assignments', 'my'] });
+      toast({ title: 'Assignment deleted.' });
+    },
+    onError: (err: Error) => toast({ title: 'Failed to delete assignment', description: err.message, variant: 'destructive' }),
   });
 
   const updateBookingStatusMutation = useMutation({
@@ -1323,6 +1342,19 @@ export default function TeacherDashboard() {
                               onClick={() => setPreviewingQuiz(quiz)}>
                               <Eye className="w-3.5 h-3.5" /> Preview
                             </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="gap-1.5 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20"
+                              disabled={deleteQuizMutation.isPending}
+                              onClick={() => {
+                                if (window.confirm(`Delete "${quiz.title}"? This will also delete all student results for this quiz.`)) {
+                                  deleteQuizMutation.mutate(quiz.id);
+                                }
+                              }}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" /> Delete
+                            </Button>
                           </div>
                         </div>
                       );
@@ -1621,6 +1653,19 @@ export default function TeacherDashboard() {
                                 <Edit className="w-3.5 h-3.5" /> Edit
                               </Button>
                             </Link>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="gap-1.5 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20"
+                              disabled={deleteAssignmentMutation.isPending}
+                              onClick={() => {
+                                if (window.confirm(`Delete "${asgn.title}"? This cannot be undone.`)) {
+                                  deleteAssignmentMutation.mutate(asgn.id);
+                                }
+                              }}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" /> Delete
+                            </Button>
                           </div>
                         </div>
                       );
