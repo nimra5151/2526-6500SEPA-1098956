@@ -2930,16 +2930,28 @@ Keep responses concise (under 200 words) unless asked for more detail.`
       return res.status(503).json({ message: "AI features are not available: OPENAI_API_KEY is not configured." });
     }
     try {
-      const { topic, duration, difficulty } = req.body;
+      const { topic, duration, difficulty, classId } = req.body;
       if (!topic) return res.status(400).json({ message: "Topic required" });
       if (topic.length > 500) return res.status(400).json({ message: "Topic too long (max 500 chars)" });
       const mins = Number(duration) || 60;
       const level = difficulty || "intermediate";
+
+      // RAG: retrieve course material if classId is provided
+      let courseContext = "";
+      if (classId) {
+        const { retrieveClassContext } = await import("./rag/chain.js");
+        courseContext = await retrieveClassContext(Number(classId), topic);
+      }
+
+      const contextBlock = courseContext.trim()
+        ? `\n\nCOURSE MATERIALS (use these as the primary source for objectives, activities, and assessment):\n${courseContext}\n`
+        : "";
+
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [{
           role: "user",
-          content: `Create a lesson plan for: "${topic}". Duration: ${mins} minutes. Level: ${level}. Audience: orphanage students aged 10-18.
+          content: `Create an assignment plan for: "${topic}". Duration: ${mins} minutes. Level: ${level}. Audience: orphanage students aged 10-18.${contextBlock}
 Return ONLY valid JSON matching this exact shape:
 {
   "title": string,
@@ -2949,14 +2961,15 @@ Return ONLY valid JSON matching this exact shape:
   "activities": [{ "name": string, "duration": number, "description": string }],
   "assessment": [string, string, string, string]
 }
-activities should sum roughly to ${mins} minutes total. Return only the JSON object, no extra text.`
+activities should sum roughly to ${mins} minutes total.${courseContext.trim() ? " Base the objectives, activities, and assessment on the provided course materials." : ""} Return only the JSON object, no extra text.`
         }],
-        max_tokens: 1000,
+        max_tokens: 1200,
         response_format: { type: "json_object" },
       });
       let plan;
       try { plan = JSON.parse(completion.choices[0]?.message?.content || "{}"); }
       catch { return res.status(502).json({ message: "AI returned an invalid response. Please try again." }); }
+      plan._ragUsed = !!courseContext.trim();
       res.json(plan);
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
@@ -2993,23 +3006,36 @@ Include one entry per skill. Set gap = target - level. Status: strong if gap<10,
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
-  // AI - Quiz Generator
+  // AI - Quiz Generator (RAG-enhanced when classId is provided)
   app.post("/api/ai/quiz-generate", authMiddleware, aiRateLimit, async (req, res) => {
     if (!process.env.OPENAI_API_KEY) {
       return res.status(503).json({ message: "AI features are not available: OPENAI_API_KEY is not configured." });
     }
     try {
-      const { topic, difficulty, questionCount } = req.body;
+      const { topic, difficulty, questionCount, classId } = req.body;
       if (!topic) return res.status(400).json({ message: "Topic required" });
       const count = Math.min(Math.max(Number(questionCount) || 5, 1), 20);
+
+      // RAG: retrieve course material if classId is provided
+      let courseContext = "";
+      if (classId) {
+        const { retrieveClassContext } = await import("./rag/chain.js");
+        courseContext = await retrieveClassContext(Number(classId), topic);
+      }
+
+      const contextBlock = courseContext.trim()
+        ? `\n\nCOURSE MATERIALS (use these as the sole basis for questions — do not invent content outside these materials):\n${courseContext}\n`
+        : "";
+
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [{
           role: "user",
-          content: `Generate ${count} multiple-choice questions about: "${topic}". Difficulty: ${difficulty || "medium"}.
+          content: `Generate ${count} multiple-choice questions about: "${topic}". Difficulty: ${difficulty || "medium"}. Audience: orphanage students aged 10-18.${contextBlock}
+${courseContext.trim() ? "Important: base ALL questions strictly on the course materials provided above." : ""}
 Return JSON: { questions: [{ id, question, options: [string, string, string, string], correctAnswer: 0-3, points: 1, explanation: string }] }`
         }],
-        max_tokens: 1500,
+        max_tokens: 1800,
         response_format: { type: "json_object" },
       });
       let result;
@@ -3020,6 +3046,7 @@ Return JSON: { questions: [{ id, question, options: [string, string, string, str
       if (returned !== requested) {
         console.warn(`[ai/quiz-generate] Requested ${requested} questions, AI returned ${returned}`);
       }
+      result._ragUsed = !!courseContext.trim();
       res.json(result);
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });

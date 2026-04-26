@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import {
-  Plus, Trash2, Save, Sparkles, Wand2, CheckCircle, XCircle
+  Plus, Trash2, Save, Sparkles, Wand2, CheckCircle, XCircle, BookOpen
 } from 'lucide-react';
 import { authFetch } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
@@ -98,9 +98,12 @@ export default function CreateQuiz() {
     }
     setAiGenerating(true);
     try {
+      const body: Record<string, unknown> = { topic: quiz.title, questionCount: 5 };
+      if (classId) body.classId = Number(classId);
+
       const data = await authFetch("/api/ai/quiz-generate", {
         method:"POST",
-        body: JSON.stringify({ topic: quiz.title, questionCount: 5 }),
+        body: JSON.stringify(body),
       });
       if (data.questions && Array.isArray(data.questions)) {
         const hasExisting = questions.some(q => q.question.trim());
@@ -116,7 +119,8 @@ export default function CreateQuiz() {
           correctAnswer: q.correctAnswer || 0,
           points: q.points || 1,
         })));
-        toast({ title: `Generated ${data.questions.length} questions with AI!` });
+        const ragNote = data._ragUsed ? " (grounded in course material)" : "";
+        toast({ title: `Generated ${data.questions.length} questions with AI${ragNote}!` });
       }
     } catch (err: Error | unknown) {
       toast({ title:"AI generation failed", description: (err as Error).message, variant:"destructive" });
@@ -149,8 +153,19 @@ export default function CreateQuiz() {
               <Sparkles className="w-8 h-8" />
             </div>
             <div className="flex-1">
-              <h3 className="text-xl font-bold mb-1">AI-Powered Quiz Generation</h3>
-              <p className="text-white/80">Let AI auto-generate multiple-choice questions, set difficulty levels, and create balanced assessments</p>
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="text-xl font-bold">AI-Powered Quiz Generation</h3>
+                {classId && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-400/20 border border-emerald-300/40 text-emerald-100 text-xs font-medium">
+                    <BookOpen className="w-3 h-3" /> RAG — Course material
+                  </span>
+                )}
+              </div>
+              <p className="text-white/80">
+                {classId
+                  ? "Questions will be generated from the actual lesson content of the selected course"
+                  : "Let AI auto-generate multiple-choice questions, set difficulty levels, and create balanced assessments"}
+              </p>
             </div>
             <Button
               onClick={generateQuestionsWithAI}

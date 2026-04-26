@@ -47,6 +47,45 @@ async function getDirectLessonContext(message: string, classId?: number): Promis
   return { text: parts.join("\n\n"), title: lesson.title };
 }
 
+/**
+ * Retrieve relevant course material chunks from Pinecone for a given class and topic.
+ * Used to ground quiz/assignment generation in actual lesson content.
+ * Returns an empty string if Pinecone is not configured or no relevant content is found.
+ */
+export async function retrieveClassContext(classId: number, topic: string): Promise<string> {
+  if (!process.env.PINECONE_API_KEY || !process.env.PINECONE_INDEX) return "";
+
+  try {
+    const embeddingResponse = await openai.embeddings.create({
+      model: "text-embedding-3-small",
+      input: topic,
+    });
+    const queryVector = embeddingResponse.data[0].embedding;
+
+    const pc = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
+    const index = pc.index(process.env.PINECONE_INDEX);
+
+    const searchResult = await index.query({
+      vector: queryVector,
+      topK: 8,
+      includeMetadata: true,
+      filter: { classId: String(classId) },
+    });
+
+    const matches = searchResult.matches ?? [];
+    const chunks = matches
+      .filter((m) => (m.score ?? 0) > 0.25)
+      .map((m) => m.metadata?.text as string)
+      .filter(Boolean);
+
+    console.log(`[RAG:context] classId=${classId} topic="${topic}" chunks=${chunks.length}`);
+    return chunks.join("\n\n---\n\n");
+  } catch (err: any) {
+    console.warn(`[RAG:context] Failed to retrieve context for classId=${classId}:`, err.message);
+    return "";
+  }
+}
+
 export async function ragChat(
   message: string,
   history: { role: "user" | "assistant"; content: string }[],
