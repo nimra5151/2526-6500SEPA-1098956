@@ -42,7 +42,6 @@ import {
   ListMinus,
 } from "lucide-react";
 import { AIStudyBuddy } from"@/components/ai-study-buddy";
-import { AutoSummaries } from"@/components/auto-summaries";
 import { SkillGapDetector } from"@/components/skill-gap-detector";
 import { DiscussionThread } from"@/components/discussion-thread";
 
@@ -211,7 +210,6 @@ export default function ClassDetail() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
   const [showStudyBuddy, setShowStudyBuddy] = useState(false);
-  const [showSummary, setShowSummary] = useState(false);
   const [showSkillGap, setShowSkillGap] = useState(false);
 
   const { data: cls, isLoading } = useQuery({
@@ -879,45 +877,6 @@ export default function ClassDetail() {
               )}
             </motion.div>
 
-            <motion.div variants={fadeIn} className="mt-6">
-              <Card className="" data-testid="card-ai-summary">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center gap-2">
-                    <BookOpen className="w-4 h-4 text-[#667EEA]" />
-                    <span className="text-base font-display font-semibold">AI Class Summary</span>
-                    <Badge variant="outline" className="text-[10px]">AI</Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {isEnrolled ? (
-                    <>
-                      <div className="space-y-2 p-3 rounded-md bg-muted/30 min-h-[120px]">
-                        <p className="text-sm text-muted-foreground">After your class session, AI will generate:</p>
-                        <div className="space-y-1.5">
-                          {["Key concepts covered","Important takeaways","Practice questions","Suggested next steps"].map((item) => (
-                            <div key={item} className="flex items-center gap-2 text-sm">
-                              <Sparkles className="w-3 h-3 text-[#667EEA] shrink-0" />
-                              <span>{item}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      <Button
-                        variant="outline"
-                        className="w-full neon-btn"
-                        disabled
-                        data-testid="button-generate-summary"
-                      >
-                        <Sparkles className="w-3.5 h-3.5" /> Generate Summary
-                      </Button>
-                      <p className="text-[10px] text-muted-foreground/60 text-center">Unlocks once you complete all lectures in this class</p>
-                    </>
-                  ) : (
-                    <p className="text-sm text-muted-foreground text-center py-4">Enroll in this class to unlock AI-generated summaries and study notes</p>
-                  )}
-                </CardContent>
-              </Card>
-            </motion.div>
           </div>
 
           <div className="w-full lg:w-80 shrink-0 hidden lg:block">
@@ -1084,20 +1043,6 @@ export default function ClassDetail() {
       {isEnrolled && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeIn} className="space-y-6 mt-8">
-            {cls.status ==="completed" ? (
-              <AutoSummaries classId={cls.id} classTitle={cls.title} />
-            ) : (
-              <Card className="border-2">
-                <CardContent className="p-6 text-center">
-                  <Sparkles className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                  <h3 className="font-semibold text-lg mb-2">AI Summary Coming Soon</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Complete this class to unlock AI-generated summaries, key points, and practice questions
-                  </p>
-                </CardContent>
-              </Card>
-            )}
-
             <Card className="border-2">
               <CardContent className="p-6">
                 <div className="flex items-start justify-between mb-4">
@@ -1130,7 +1075,7 @@ export default function ClassDetail() {
 
       {user && (
         <>
-          {!showStudyBuddy && !showSummary && !showSkillGap && (
+          {!showStudyBuddy && !showSkillGap && (
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
@@ -1146,18 +1091,6 @@ export default function ClassDetail() {
                   className="rounded-full w-14 h-14 shadow-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:scale-110 transition-transform"
                 >
                   <TrendingUp className="w-6 h-6" />
-                </Button>
-              </motion.div>
-              <motion.div
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <Button
-                  onClick={() => setShowSummary(true)}
-                  size="lg"
-                  className="rounded-full w-14 h-14 shadow-2xl bg-gradient-to-r from-indigo-500 to-indigo-600 hover:scale-110 transition-transform"
-                >
-                  <FileText className="w-6 h-6" />
                 </Button>
               </motion.div>
               <motion.div
@@ -1181,40 +1114,6 @@ export default function ClassDetail() {
               classId={cls.id}
               onClose={() => setShowStudyBuddy(false)}
             />
-          )}
-
-          {showSummary && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            >
-              <motion.div
-                initial={{ scale: 0.95, y: 20 }}
-                animate={{ scale: 1, y: 0 }}
-                exit={{ scale: 0.95, y: 20 }}
-                className="max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-              >
-                <div className="relative">
-                  <Button
-                    onClick={() => setShowSummary(false)}
-                    variant="ghost"
-                    size="icon"
-                    className="absolute top-4 right-4 z-10"
-                  >
-                    <span className="sr-only">Close</span>
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </Button>
-                  <AutoSummaries
-                    classTitle={cls.title}
-                    classId={cls.id}
-                  />
-                </div>
-              </motion.div>
-            </motion.div>
           )}
 
           {showSkillGap && (

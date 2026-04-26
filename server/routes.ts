@@ -2977,39 +2977,6 @@ Include one entry per skill. Set gap = target - level. Status: strong if gap<10,
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
-  // AI - Class Summary Generator
-  app.post("/api/ai/summarize", authMiddleware, aiRateLimit, async (req, res) => {
-    if (!process.env.OPENAI_API_KEY) {
-      return res.status(503).json({ message: "AI features are not available: OPENAI_API_KEY is not configured." });
-    }
-    try {
-      const { classTitle } = req.body;
-      if (!classTitle) return res.status(400).json({ message: "classTitle required" });
-      if (classTitle.length > 200) return res.status(400).json({ message: "classTitle too long (max 200 chars)" });
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [{
-          role: "user",
-          content: `Generate a study summary for a class titled: "${classTitle}".
-Return ONLY valid JSON:
-{
-  "keyPoints": [string, string, string, string],
-  "takeaways": [string, string, string],
-  "practiceQuestions": [string, string, string, string],
-  "nextSteps": [string, string, string, string]
-}
-Make content relevant to the class topic and educational for students aged 10-18.`
-        }],
-        max_tokens: 900,
-        response_format: { type: "json_object" },
-      });
-      let result;
-      try { result = JSON.parse(completion.choices[0]?.message?.content || "{}"); }
-      catch { return res.status(502).json({ message: "AI returned an invalid response. Please try again." }); }
-      res.json(result);
-    } catch (err: any) { res.status(500).json({ message: err.message }); }
-  });
-
   // AI - Quiz Generator
   app.post("/api/ai/quiz-generate", authMiddleware, aiRateLimit, async (req, res) => {
     if (!process.env.OPENAI_API_KEY) {
