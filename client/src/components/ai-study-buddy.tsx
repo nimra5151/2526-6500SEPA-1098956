@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  MessageSquare,
   Send,
   Sparkles,
   Lightbulb,
@@ -221,13 +220,17 @@ export function AIStudyBuddy({ classTitle, classId, onClose }: AIStudyBuddyProps
         animate={{ scale: 1 }}
         className="fixed bottom-6 right-6 z-50"
       >
-        <Button
+        <button
           onClick={() => setIsMinimized(false)}
-          size="lg"
-          className="rounded-full w-16 h-16 shadow-2xl bg-primary"
+          className="rounded-full w-16 h-16 shadow-2xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center hover:opacity-90 transition-opacity relative"
         >
-          <MessageSquare className="w-6 h-6" />
-        </Button>
+          <Bot className="w-7 h-7 text-white" />
+          <motion.div
+            className="absolute top-1 right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white"
+            animate={{ scale: [1, 1.2, 1] }}
+            transition={{ duration: 2, repeat: Infinity }}
+          />
+        </button>
       </motion.div>
     );
   }
