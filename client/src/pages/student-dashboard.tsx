@@ -27,6 +27,7 @@ import { AssignmentsTab } from '@/components/student/AssignmentsTab';
 import { AnalyticsTab } from '@/components/student/AnalyticsTab';
 import { MyTutorsTab } from '@/components/student/MyTutorsTab';
 import { PeerHelpTab } from '@/components/student/PeerHelpTab';
+import { CertificatesTab } from '@/components/student/CertificatesTab';
 
 const BADGE_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6'];
 
@@ -423,6 +424,7 @@ export default function StudentDashboard() {
               <TabsTrigger value="analytics" className="text-sm rounded-md data-[state=active]:bg-indigo-600 data-[state=active]:text-white">Analytics</TabsTrigger>
               <TabsTrigger value="tutors" className="text-sm rounded-md data-[state=active]:bg-indigo-600 data-[state=active]:text-white">My Tutors</TabsTrigger>
               <TabsTrigger value="peer-help" className="text-sm rounded-md data-[state=active]:bg-indigo-600 data-[state=active]:text-white">Peer Help</TabsTrigger>
+              <TabsTrigger value="certificates" className="text-sm rounded-md data-[state=active]:bg-indigo-600 data-[state=active]:text-white">Certificates</TabsTrigger>
             </TabsList>
           </div>
 
@@ -574,6 +576,13 @@ export default function StudentDashboard() {
               refetchMyOffers={refetchMyOffers}
               mySessions={mySessions}
               refetchSessions={refetchSessions}
+            />
+          </TabsContent>
+
+          <TabsContent value="certificates" className="space-y-6">
+            <CertificatesTab
+              certificates={certificates as any[]}
+              studentName={user?.name || ''}
             />
           </TabsContent>
         </Tabs>

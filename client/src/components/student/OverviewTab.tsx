@@ -83,7 +83,7 @@ export function OverviewTab({
         {[
           { label: 'Book a Session', icon: Calendar, href: '/classes', color: 'bg-indigo-600 hover:bg-indigo-700 text-white' },
           { label: 'Browse Classes', icon: BookOpen, href: '/classes', color: 'bg-sky-600 hover:bg-sky-700 text-white' },
-          { label: 'My Certificates', icon: Award, onClick: () => setActiveTab('bookings'), color: 'bg-emerald-600 hover:bg-emerald-700 text-white' },
+          { label: 'Certificates', icon: Award, onClick: () => setActiveTab('certificates'), color: 'bg-emerald-600 hover:bg-emerald-700 text-white' },
           { label: 'Message Tutor', icon: MessageCircle, href: '/messages', color: 'bg-violet-600 hover:bg-violet-700 text-white' },
         ].map((action) => (
           action.href ? (
@@ -453,39 +453,6 @@ export function OverviewTab({
         </Card>
       )}
 
-      {/* My Certificates */}
-      {certificates.length > 0 && (
-        <Card className="border border-border/60 dark:border-slate-800 shadow-sm">
-          <CardHeader className="border-b border-border/40 dark:border-slate-800 pb-4">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Award className="w-4 h-4 text-emerald-600" /> My Certificates
-              <Badge className="bg-emerald-100 text-emerald-700">{certificates.length}</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-5">
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {certificates.map((cert: any) => (
-                <div key={cert.id} className="border border-emerald-200 dark:border-emerald-900/40 rounded-xl p-4 bg-emerald-50/50 dark:bg-emerald-950/10">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center shrink-0">
-                      <Award className="w-5 h-5 text-emerald-600" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-foreground truncate">{cert.courseName || cert.className || 'Course'}</p>
-                      <p className="text-xs text-slate-500 mt-0.5">{cert.issuedAt ? new Date(cert.issuedAt).toLocaleDateString() : 'Issued'}</p>
-                      {cert.verificationCode && (
-                        <Link href={`/verify/${cert.verificationCode}`}>
-                          <span className="text-xs text-indigo-600 hover:underline mt-1 inline-block">Verify →</span>
-                        </Link>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }
