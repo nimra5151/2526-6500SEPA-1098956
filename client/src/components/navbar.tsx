@@ -153,6 +153,27 @@ export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const { t } = useTranslation();
 
+  const themeMutation = useMutation({
+    mutationFn: async (newTheme: "light" | "dark") => {
+      const cached: any = queryClient.getQueryData(["/api/settings"]) ?? {};
+      return authFetch("/api/settings", {
+        method: "PUT",
+        body: JSON.stringify({ ...cached, theme: newTheme }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
+    },
+  });
+
+  const handleThemeToggle = () => {
+    const nextTheme = theme === "dark" ? "light" : "dark";
+    toggleTheme();
+    if (user) {
+      themeMutation.mutate(nextTheme);
+    }
+  };
+
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -254,7 +275,7 @@ export function Navbar() {
 
         {/* Right side actions */}
         <div className="flex items-center gap-1.5">
-          <Button variant="ghost" size="icon" className="w-9 h-9 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={toggleTheme} aria-label="Toggle theme" title="Toggle theme (also in Settings)" data-testid="button-theme-toggle">
+          <Button variant="ghost" size="icon" className="w-9 h-9 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={handleThemeToggle} aria-label="Toggle theme" title="Toggle theme (also in Settings)" data-testid="button-theme-toggle">
             {theme ==="dark" ? <Sun className="w-4.5 h-4.5" /> : <Moon className="w-4.5 h-4.5" />}
           </Button>
 

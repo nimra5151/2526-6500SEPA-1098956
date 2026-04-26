@@ -47,7 +47,7 @@ export default function Settings() {
   const { user, logout } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { setTheme: applyTheme } = useTheme();
+  const { setTheme: applyTheme, theme: currentTheme } = useTheme();
   const search = useSearch();
   const tabFromUrl = new URLSearchParams(search).get("tab");
   const [activeTab, setActiveTab] = useState<string>(tabFromUrl || "account");
@@ -70,7 +70,7 @@ export default function Settings() {
   const [messagingPreference, setMessagingPreference] = useState("everyone");
   const [showProfilePublicly, setShowProfilePublicly] = useState(true);
 
-  const [theme, setTheme] = useState("light");
+  const [theme, setTheme] = useState<"light" | "dark">(currentTheme);
   const [language, setLanguage] = useState("en");
   const { t, i18n } = useTranslation();
   const [autoplayVideos, setAutoplayVideos] = useState(true);
@@ -102,7 +102,7 @@ export default function Settings() {
       setMarketingEmails(settings.marketingEmails ?? false);
       setMessagingPreference(settings.messagingPreference ||"everyone");
       setShowProfilePublicly(settings.showProfilePublicly ?? true);
-      setTheme(settings.theme ||"light");
+      setTheme((settings.theme as "light" | "dark") || currentTheme);
       const rawLang = settings.language || "en";
       setLanguage(LANG_NAME_TO_CODE[rawLang] || rawLang);
       setAutoplayVideos(settings.autoplayVideos ?? true);
@@ -113,7 +113,7 @@ export default function Settings() {
         } catch {}
       }
     }
-  }, [settings]);
+  }, [settings, currentTheme]);
 
   const profileMutation = useMutation({
     mutationFn: async () => {
