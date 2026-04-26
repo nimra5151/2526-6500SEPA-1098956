@@ -486,7 +486,6 @@ export function AIStudyBuddy({ classTitle, classId, onClose }: AIStudyBuddyProps
           </div>
         </CardContent>
       </Card>
-    </div>
     </motion.div>
   );
 }
