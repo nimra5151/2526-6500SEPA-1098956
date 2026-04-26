@@ -1074,7 +1074,7 @@ export default function ClassDetail() {
         <RelatedClasses category={cls.category} currentClassId={cls.id} />
       </div>
 
-      {user && (
+      {user && cls?.isEnrolled && (
         <>
           {!showStudyBuddy && !showSkillGap && (
             <motion.div

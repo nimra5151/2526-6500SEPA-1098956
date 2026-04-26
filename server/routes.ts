@@ -2878,6 +2878,22 @@ Keep responses concise (under 200 words) unless asked for more detail.`
       console.log(`[RAG] Incoming request: classId=${classId}, message="${message?.slice(0, 50)}"`);
       if (!message) return res.status(400).json({ message: "Message required" });
       if (message.length > 2000) return res.status(400).json({ message: "Message too long (max 2000 chars)" });
+
+      // Enrollment gate: if a classId is provided, the user must be enrolled (or be the tutor)
+      if (classId) {
+        const cls = await storage.getClass(Number(classId));
+        if (!cls) return res.status(404).json({ message: "Class not found" });
+        const isTutor = cls.tutorId === req.userId;
+        if (!isTutor) {
+          const enrolled = await db.select().from(bookings)
+            .where(and(eq(bookings.studentId, req.userId), eq(bookings.classId, Number(classId)), ne(bookings.status, "cancelled")))
+            .limit(1);
+          if (!enrolled[0]) {
+            return res.status(403).json({ message: "You must be enrolled in this class to use AI Study Buddy." });
+          }
+        }
+      }
+
       const safeHistory = Array.isArray(history)
         ? (history as any[]).filter((m: any) => m.role === "user" || m.role === "assistant").slice(-8)
         : [];

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -65,6 +65,29 @@ export function AIStudyBuddy({ classTitle, classId, onClose }: AIStudyBuddyProps
   const [expandedSources, setExpandedSources] = useState<Set<string>>(new Set());
   const [conversationHistory, setConversationHistory] = useState<Array<{ role: string; content: string }>>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const [chatWidth, setChatWidth] = useState(384);
+  const [chatScrollHeight, setChatScrollHeight] = useState(384);
+  const resizeOrigin = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+
+  const startResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    resizeOrigin.current = { x: e.clientX, y: e.clientY, w: chatWidth, h: chatScrollHeight };
+    const onMove = (ev: MouseEvent) => {
+      if (!resizeOrigin.current) return;
+      const dx = resizeOrigin.current.x - ev.clientX;
+      const dy = resizeOrigin.current.y - ev.clientY;
+      setChatWidth(Math.min(720, Math.max(300, resizeOrigin.current.w + dx)));
+      setChatScrollHeight(Math.min(640, Math.max(200, resizeOrigin.current.h + dy)));
+    };
+    const onUp = () => {
+      resizeOrigin.current = null;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [chatWidth, chatScrollHeight]);
 
   // Load saved conversation history from localStorage on mount
   useEffect(() => {
@@ -240,8 +263,18 @@ export function AIStudyBuddy({ classTitle, classId, onClose }: AIStudyBuddyProps
       initial={{ opacity: 0, y: 20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 20, scale: 0.95 }}
-      className="fixed bottom-6 right-6 z-50 w-96 max-w-[calc(100vw-3rem)]"
+      className="fixed bottom-6 right-6 z-50"
+      style={{ width: Math.min(chatWidth, window.innerWidth - 48) }}
     >
+      <div
+        className="absolute -top-2 -left-2 w-5 h-5 rounded-full bg-purple-500/60 hover:bg-purple-500 cursor-nw-resize flex items-center justify-center z-10 select-none"
+        onMouseDown={startResize}
+        title="Drag to resize"
+      >
+        <svg width="8" height="8" viewBox="0 0 8 8" fill="white">
+          <circle cx="2" cy="2" r="1.2"/><circle cx="6" cy="2" r="1.2"/><circle cx="2" cy="6" r="1.2"/><circle cx="6" cy="6" r="1.2"/>
+        </svg>
+      </div>
       <Card className="border-2 shadow-2xl bg-white dark:bg-slate-900 border-purple-200 dark:border-purple-800">
         <CardHeader className="pb-3 border-b bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/50 dark:to-pink-950/50">
           <div className="flex items-center justify-between">
@@ -290,7 +323,7 @@ export function AIStudyBuddy({ classTitle, classId, onClose }: AIStudyBuddyProps
         </CardHeader>
 
         <CardContent className="p-0">
-          <ScrollArea className="h-96 p-4" ref={scrollRef}>
+          <ScrollArea className="p-4" style={{ height: chatScrollHeight }} ref={scrollRef}>
             <AnimatePresence>
               {messages.map((message, index) => (
                 <motion.div
@@ -453,6 +486,7 @@ export function AIStudyBuddy({ classTitle, classId, onClose }: AIStudyBuddyProps
           </div>
         </CardContent>
       </Card>
+    </div>
     </motion.div>
   );
 }
