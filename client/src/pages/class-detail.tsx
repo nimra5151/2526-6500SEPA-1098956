@@ -26,6 +26,7 @@ import {
   Globe,
   User,
   MessageSquare,
+  Bot,
   Monitor,
   Video,
   Award,
@@ -1100,9 +1101,9 @@ export default function ClassDetail() {
                 <Button
                   onClick={() => setShowStudyBuddy(true)}
                   size="lg"
-                  className="rounded-full w-14 h-14 shadow-2xl bg-gradient-to-r from-purple-500 to-pink-600 hover:scale-110 transition-transform"
+                  className="rounded-full w-14 h-14 shadow-2xl bg-gradient-to-br from-primary to-purple-600 hover:scale-110 transition-transform"
                 >
-                  <MessageSquare className="w-6 h-6" />
+                  <Bot className="w-6 h-6" />
                 </Button>
               </motion.div>
             </motion.div>
