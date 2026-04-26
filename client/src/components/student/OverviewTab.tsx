@@ -78,30 +78,6 @@ export function OverviewTab({
 
   return (
     <div className="space-y-6">
-      {/* Quick Actions */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          { label: 'Book a Session', icon: Calendar, href: '/classes', color: 'bg-indigo-600 hover:bg-indigo-700 text-white' },
-          { label: 'Browse Classes', icon: BookOpen, href: '/classes', color: 'bg-sky-600 hover:bg-sky-700 text-white' },
-          { label: 'Certificates', icon: Award, onClick: () => setActiveTab('certificates'), color: 'bg-emerald-600 hover:bg-emerald-700 text-white' },
-          { label: 'Message Tutor', icon: MessageCircle, href: '/messages', color: 'bg-violet-600 hover:bg-violet-700 text-white' },
-        ].map((action) => (
-          action.href ? (
-            <Link key={action.label} href={action.href}>
-              <Button className={`w-full h-14 flex-col gap-1 text-xs font-medium ${action.color}`}>
-                <action.icon className="w-5 h-5" />
-                {action.label}
-              </Button>
-            </Link>
-          ) : (
-            <Button key={action.label} className={`h-14 flex-col gap-1 text-xs font-medium ${action.color}`} onClick={action.onClick}>
-              <action.icon className="w-5 h-5" />
-              {action.label}
-            </Button>
-          )
-        ))}
-      </div>
-
       {/* Weekly Goal */}
       <Card className="border border-border/60 dark:border-slate-800 shadow-sm">
         <CardContent className="p-5">
