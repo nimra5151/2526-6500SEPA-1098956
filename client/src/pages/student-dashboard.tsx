@@ -15,6 +15,7 @@ import {
   BookOpen, Clock, Award, Calendar,
   Flame, HelpCircle, MessageCircle, AlertCircle,
   Star, Zap, Trophy, Target, Video, ExternalLink, X, Wifi,
+  PlayCircle, Film, Loader2, WifiOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -45,6 +46,7 @@ export default function StudentDashboard() {
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
   const [showLiveDialog, setShowLiveDialog] = useState(false);
+  const [showRecordingsDialog, setShowRecordingsDialog] = useState(false);
   const [reviewingQuizResult, setReviewingQuizResult] = useState<QuizResult | null>(null);
 
   const { data: userSettings } = useQuery<any>({
@@ -147,6 +149,13 @@ export default function StudentDashboard() {
     enabled: !!user,
     refetchInterval: 30_000,
     staleTime: 20_000,
+  });
+
+  const { data: recordings = [], isLoading: recordingsLoading } = useQuery<any[]>({
+    queryKey: ['/api/student/recordings'],
+    queryFn: () => authFetch('/api/student/recordings'),
+    enabled: showRecordingsDialog,
+    staleTime: 60_000,
   });
 
   const { data: mySubmissions = [], isLoading: submissionsLoading, isError: submissionsError } = useQuery({
@@ -415,21 +424,31 @@ export default function StudentDashboard() {
             title="My Dashboard"
             description={`Welcome back, ${user?.name || 'Student'}! Keep up the great work.`}
           />
-          <Button
-            className={`shrink-0 relative ${(activeSessions as any[]).length > 0 ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-slate-700 hover:bg-slate-800 text-white dark:bg-slate-700 dark:hover:bg-slate-600'}`}
-            onClick={() => setShowLiveDialog(true)}
-          >
-            {(activeSessions as any[]).length > 0 && (
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
-            )}
-            <Video className="w-4 h-4 mr-2" />
-            Live Sessions
-            {(activeSessions as any[]).length > 0 && (
-              <span className="ml-2 inline-flex items-center justify-center w-5 h-5 text-xs font-bold bg-white/20 rounded-full">
-                {(activeSessions as any[]).length}
-              </span>
-            )}
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              className={`relative ${(activeSessions as any[]).length > 0 ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-slate-700 hover:bg-slate-800 text-white dark:bg-slate-700 dark:hover:bg-slate-600'}`}
+              onClick={() => setShowLiveDialog(true)}
+            >
+              {(activeSessions as any[]).length > 0 && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
+              )}
+              <Video className="w-4 h-4 mr-2" />
+              Live Sessions
+              {(activeSessions as any[]).length > 0 && (
+                <span className="ml-2 inline-flex items-center justify-center w-5 h-5 text-xs font-bold bg-white/20 rounded-full">
+                  {(activeSessions as any[]).length}
+                </span>
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              className="border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              onClick={() => setShowRecordingsDialog(true)}
+            >
+              <PlayCircle className="w-4 h-4 mr-2 text-indigo-500" />
+              Recordings
+            </Button>
+          </div>
         </div>
 
         {(statsError || classesError || bookingsError) && (
@@ -625,26 +644,32 @@ export default function StudentDashboard() {
 
       {/* Live Sessions Dialog */}
       {showLiveDialog && (
-        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4">
-          <div className="bg-background rounded-2xl border shadow-2xl w-full max-w-lg">
-            <div className="flex items-center justify-between p-5 border-b">
+        <div
+          className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowLiveDialog(false); }}
+        >
+          <div className="bg-background rounded-2xl border shadow-2xl w-full max-w-lg flex flex-col" style={{ maxHeight: 'min(90vh, 560px)' }}>
+            {/* Fixed header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
               <div>
                 <h3 className="font-semibold text-lg flex items-center gap-2">
                   <Video className="w-5 h-5 text-blue-600" /> Live Sessions
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">Active Zoom sessions you can join right now</p>
               </div>
-              <button onClick={() => setShowLiveDialog(false)} className="text-muted-foreground hover:text-foreground transition-colors">
+              <button onClick={() => setShowLiveDialog(false)} className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-muted">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-5 space-y-3 max-h-[60vh] overflow-y-auto">
+
+            {/* Scrollable content */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-3">
               {(activeSessions as any[]).length === 0 ? (
                 <div className="text-center py-10 text-muted-foreground">
-                  <Video className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                  <WifiOff className="w-12 h-12 mx-auto mb-3 opacity-20" />
                   <p className="font-medium text-sm">No live sessions right now</p>
                   <p className="text-xs mt-1 max-w-xs mx-auto">
-                    When your teacher starts a live Zoom session, it will appear here. You will also get a notification.
+                    When your teacher starts a live Zoom session, it will appear here and you'll get a notification with a direct join link.
                   </p>
                 </div>
               ) : (
@@ -655,8 +680,7 @@ export default function StudentDashboard() {
                         <p className="font-semibold text-sm truncate">{session.classTitle}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">Hosted by {session.tutorName}</p>
                       </div>
-                      <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 shrink-0">
-                        <Wifi className="w-3 h-3" />
+                      <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 shrink-0">
                         <span className="relative flex h-2 w-2">
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
                           <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
@@ -679,9 +703,104 @@ export default function StudentDashboard() {
                 ))
               )}
             </div>
-            <div className="px-5 py-4 border-t flex items-center justify-between">
+
+            {/* Fixed footer */}
+            <div className="px-5 py-4 border-t shrink-0 flex items-center justify-between">
               <p className="text-xs text-muted-foreground">Auto-refreshes every 30 seconds</p>
               <Button variant="outline" size="sm" onClick={() => setShowLiveDialog(false)}>Close</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recordings Dialog */}
+      {showRecordingsDialog && (
+        <div
+          className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowRecordingsDialog(false); }}
+        >
+          <div className="bg-background rounded-2xl border shadow-2xl w-full max-w-2xl flex flex-col" style={{ maxHeight: 'min(90vh, 680px)' }}>
+            {/* Fixed header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
+              <div>
+                <h3 className="font-semibold text-lg flex items-center gap-2">
+                  <Film className="w-5 h-5 text-indigo-600" /> Recorded Sessions
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">Past Zoom recordings from your enrolled classes</p>
+              </div>
+              <button onClick={() => setShowRecordingsDialog(false)} className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-muted">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Scrollable content */}
+            <div className="flex-1 overflow-y-auto p-5">
+              {recordingsLoading ? (
+                <div className="flex flex-col items-center justify-center py-14 gap-3 text-muted-foreground">
+                  <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+                  <p className="text-sm">Loading recordings…</p>
+                </div>
+              ) : (recordings as any[]).length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Film className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                  <p className="font-medium text-sm">No recordings available yet</p>
+                  <p className="text-xs mt-1 max-w-xs mx-auto">
+                    Recorded Zoom sessions from your enrolled classes will appear here once your teacher has completed and saved a session.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {(recordings as any[]).map((rec: any, idx: number) => {
+                    const recordedAt = rec.start_time ? new Date(rec.start_time) : null;
+                    const durationMins = rec.duration ? Math.round(rec.duration / 60) : null;
+                    return (
+                      <div key={rec.id || idx} className="rounded-xl border border-border bg-card p-4 flex items-start gap-4">
+                        {/* Thumbnail / icon */}
+                        <div className="w-14 h-14 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center shrink-0">
+                          <PlayCircle className="w-7 h-7 text-indigo-600 dark:text-indigo-400" />
+                        </div>
+                        {/* Info */}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-sm truncate">{rec.classTitle || 'Class Recording'}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">Hosted by {rec.tutorName || 'Tutor'}</p>
+                          <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                            {recordedAt && (
+                              <span className="text-xs text-muted-foreground">
+                                {recordedAt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                              </span>
+                            )}
+                            {durationMins !== null && (
+                              <span className="text-xs text-muted-foreground">{durationMins} min</span>
+                            )}
+                            {rec.file_size && (
+                              <span className="text-xs text-muted-foreground">{(rec.file_size / 1_000_000).toFixed(0)} MB</span>
+                            )}
+                          </div>
+                        </div>
+                        {/* Watch button */}
+                        {(rec.play_url || rec.download_url || rec.recording_files?.[0]?.play_url) && (
+                          <Button
+                            size="sm"
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white shrink-0"
+                            onClick={() => {
+                              const url = rec.play_url || rec.download_url || rec.recording_files?.[0]?.play_url;
+                              if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                            }}
+                          >
+                            <PlayCircle className="w-3.5 h-3.5 mr-1.5" />
+                            Watch
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Fixed footer */}
+            <div className="px-5 py-4 border-t shrink-0 flex justify-end">
+              <Button variant="outline" size="sm" onClick={() => setShowRecordingsDialog(false)}>Close</Button>
             </div>
           </div>
         </div>

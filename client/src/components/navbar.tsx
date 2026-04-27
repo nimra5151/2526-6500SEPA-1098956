@@ -14,7 +14,7 @@ import {
 import {
   BookOpen, Menu, X, User, LogOut, LayoutDashboard, MessageSquare,
   Calendar, Settings, Sun, Moon, Bell, AlertCircle, Star, Shield,
-  Plus, FileText, Award, PhoneCall, Bookmark, Search,
+  Plus, FileText, Award, PhoneCall, Bookmark, Search, Video, ExternalLink,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -120,17 +120,44 @@ function NotificationBell() {
         </div>
         <DropdownMenuSeparator className="bg-slate-200 dark:bg-slate-700" />
         {notifications && notifications.length > 0 ? (
-          notifications.map((n: any) => (
-            <DropdownMenuItem key={n.id} className="flex items-start gap-3 px-3 py-2.5 cursor-pointer rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800" data-testid={`notification-item-${n.id}`}>
-              <div className="mt-0.5 shrink-0 text-slate-500 dark:text-slate-400">{getNotificationIcon(n.type)}</div>
-              <div className="flex-1 min-w-0">
-                <p className={`text-sm truncate ${!n.read ?"font-semibold text-slate-900 dark:text-white" :"font-normal text-slate-700 dark:text-slate-300"}`}>{n.title}</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{n.message}</p>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{timeAgo(n.createdAt)}</p>
+          notifications.map((n: any) => {
+            const isLiveSession = n.link && (n.title?.includes("Live session") || n.title?.includes("live session"));
+            return (
+              <div
+                key={n.id}
+                className={`flex items-start gap-3 px-3 py-2.5 rounded-lg cursor-default ${
+                  isLiveSession
+                    ? "bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 mx-1 mb-1"
+                    : "hover:bg-slate-100 dark:hover:bg-slate-800"
+                }`}
+                data-testid={`notification-item-${n.id}`}
+              >
+                <div className={`mt-0.5 shrink-0 ${isLiveSession ? "text-blue-600 dark:text-blue-400" : "text-slate-500 dark:text-slate-400"}`}>
+                  {isLiveSession ? <Video className="w-4 h-4" /> : getNotificationIcon(n.type)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm ${!n.read ? "font-semibold text-slate-900 dark:text-white" : "font-normal text-slate-700 dark:text-slate-300"} ${isLiveSession ? "text-blue-900 dark:text-blue-100" : ""}`}>
+                    {n.title}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">{n.message}</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{timeAgo(n.createdAt)}</p>
+                  {isLiveSession && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        window.open(n.link, "_blank", "noopener,noreferrer");
+                      }}
+                      className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Join Now
+                    </button>
+                  )}
+                </div>
+                {!n.read && !isLiveSession && <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5 shrink-0" />}
               </div>
-              {!n.read && <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5 shrink-0" />}
-            </DropdownMenuItem>
-          ))
+            );
+          })
         ) : (
           <div className="px-3 py-8 text-center text-sm text-slate-500 dark:text-slate-400">{t("nav.noNotifications")}</div>
         )}

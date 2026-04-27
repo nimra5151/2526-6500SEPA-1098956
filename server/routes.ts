@@ -4307,6 +4307,52 @@ Give exactly 3 suggestions. Each "text" should describe their current progress c
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
+  // GET all Zoom recordings for every class a student is enrolled in
+  app.get("/api/student/recordings", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId;
+      // Get all non-cancelled enrollments
+      const enrolled = await db.select({ classId: bookings.classId }).from(bookings)
+        .where(and(eq(bookings.studentId, userId), ne(bookings.status, "cancelled")));
+      const enrolledIds = [...new Set(enrolled.map(e => e.classId).filter(Boolean))] as number[];
+      if (enrolledIds.length === 0) return res.json([]);
+
+      // Fetch class rows that have a zoom meeting ID
+      const classRows = await db.select({
+        id: classes.id, title: classes.title, tutorId: classes.tutorId,
+        zoomMeetingId: classes.zoomMeetingId,
+      }).from(classes).where(and(inArray(classes.id, enrolledIds), not(isNull(classes.zoomMeetingId))));
+
+      if (classRows.length === 0) return res.json([]);
+
+      // Fetch tutor names
+      const tutorIds = [...new Set(classRows.map(c => c.tutorId).filter(Boolean))] as number[];
+      const tutorRows = tutorIds.length > 0
+        ? await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, tutorIds))
+        : [];
+      const tutorMap = Object.fromEntries(tutorRows.map(t => [t.id, t.name]));
+
+      // Gather recordings for each class (ignore individual failures)
+      const results = await Promise.allSettled(
+        classRows.map(async (cls) => {
+          const recs = await listZoomRecordings(cls.zoomMeetingId!);
+          return recs.map((r: any) => ({
+            ...r,
+            classId: cls.id,
+            classTitle: cls.title,
+            tutorName: tutorMap[cls.tutorId!] || "Tutor",
+          }));
+        })
+      );
+
+      const allRecordings = results
+        .filter(r => r.status === "fulfilled")
+        .flatMap(r => (r as PromiseFulfilledResult<any[]>).value);
+
+      res.json(allRecordings);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   // POST create a Zoom meeting for a class (teacher only)
   app.post("/api/live-class/:classId/zoom", authMiddleware, async (req: Request, res: Response) => {
     try {
