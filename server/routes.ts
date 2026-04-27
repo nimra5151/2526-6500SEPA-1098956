@@ -2555,7 +2555,7 @@ export async function registerRoutes(
       const [lesson] = await db.insert(lessons).values({
         title, description, content, duration: Number(duration) || 30,
         difficulty: difficulty || "beginner",
-        classId: Number(classId),
+        classId: classId ? Number(classId) : null,
         tutorId: req.userId,
         sections: sections || [],
         ...(attachments !== undefined && { attachments }),
@@ -3034,6 +3034,82 @@ activities should sum roughly to ${mins} minutes total.${courseContext.trim() ? 
       catch { return res.status(502).json({ message: "AI returned an invalid response. Please try again." }); }
       plan._ragUsed = !!courseContext.trim();
       res.json(plan);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // AI - Lesson Content Generator (actual educational content, not just a plan outline)
+  app.post("/api/ai/lesson-content", authMiddleware, aiRateLimit, async (req, res) => {
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(503).json({ message: "AI features are not available: OPENAI_API_KEY is not configured." });
+    }
+    try {
+      const { topic, duration, difficulty, classId } = req.body;
+      if (!topic) return res.status(400).json({ message: "Topic required" });
+      if (topic.length > 500) return res.status(400).json({ message: "Topic too long (max 500 chars)" });
+      const mins = Number(duration) || 45;
+      const level = difficulty || "beginner";
+
+      // RAG: retrieve course material if classId is provided
+      let courseContext = "";
+      if (classId) {
+        const { retrieveClassContext } = await import("./rag/chain.js");
+        courseContext = await retrieveClassContext(Number(classId), topic);
+      }
+
+      const contextBlock = courseContext.trim()
+        ? `\n\nCOURSE MATERIALS (use these as the authoritative source for all content — stay faithful to the facts, examples, and terminology in these materials):\n${courseContext}\n`
+        : "";
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{
+          role: "user",
+          content: `You are an expert teacher writing a lesson for orphanage students aged 10-18 (level: ${level}).
+Topic: "${topic}". Target duration: ${mins} minutes.${contextBlock}
+
+Write ACTUAL LESSON CONTENT — not a plan outline. Each section must contain rich educational text:
+- Full explanatory paragraphs (not bullet summaries)
+- Concrete real-world examples and analogies students can relate to
+- Step-by-step walkthroughs where relevant
+- Simple exercises or "try it yourself" prompts at the end of relevant sections
+
+Also write a separate lesson plan summary (objectives, materials, assessment).
+
+Return ONLY valid JSON with this exact shape:
+{
+  "sections": [
+    { "title": string, "content": string },
+    { "title": string, "content": string },
+    { "title": string, "content": string }
+  ],
+  "plan": {
+    "objectives": [string, string, string],
+    "materials": [string, string, string],
+    "assessment": [string, string, string]
+  }
+}
+
+Rules:
+- sections: 3-5 sections. Each "content" must be at least 3 full sentences of real educational explanation — no bullet lists in content.${courseContext.trim() ? " Base all content strictly on the provided course materials." : ""}
+- plan.objectives: 3 clear learning goals starting with a verb (e.g. "Understand...", "Apply...", "Identify...")
+- plan.materials: 3-5 items needed to deliver this lesson
+- plan.assessment: 3 ways to check student understanding
+Return only the JSON object, no extra text.`
+        }],
+        max_tokens: 2000,
+        response_format: { type: "json_object" },
+      });
+
+      let result;
+      try { result = JSON.parse(completion.choices[0]?.message?.content || "{}"); }
+      catch { return res.status(502).json({ message: "AI returned an invalid response. Please try again." }); }
+
+      if (!Array.isArray(result.sections) || result.sections.length === 0) {
+        return res.status(502).json({ message: "AI did not return lesson sections. Please try again." });
+      }
+
+      result._ragUsed = !!courseContext.trim();
+      res.json(result);
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 

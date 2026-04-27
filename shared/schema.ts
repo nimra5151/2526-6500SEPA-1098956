@@ -244,7 +244,7 @@ export const contactSubmissions = pgTable("contact_submissions", {
 
 export const lessons = pgTable("lessons", {
   id: serial("id").primaryKey(),
-  classId: integer("class_id").notNull().references(() => classes.id),
+  classId: integer("class_id").references(() => classes.id),
   tutorId: integer("tutor_id").notNull().references(() => users.id),
   title: text("title").notNull(),
   description: text("description"),
@@ -498,7 +498,7 @@ export const insertLessonSchema = createInsertSchema(lessons).omit({
 }).extend({
   title: z.string().min(1, "Title is required").max(200, "Title too long"),
   duration: z.number().int().min(1).max(480).optional(),
-  classId: z.number().int().positive(),
+  classId: z.number().int().positive().nullable().optional(),
   tutorId: z.number().int().positive(),
 });
 
