@@ -1392,23 +1392,31 @@ export async function registerRoutes(
                 courseName: cls.title,
                 tutorName: tutor?.name || "Tutor",
                 verificationCode,
+                status: "pending",
               }).returning();
             }
-            // Notify student
+            // Notify student — certificate pending coordinator approval
             const sessLang = await getUserLang(storage, booking.studentId);
             const sessText = getNotifText("session_completed", sessLang, { className: cls.title });
             const notif = await storage.createNotification({
               userId: booking.studentId,
               type: "system",
               title: sessText.title,
-              message: sessText.message,
+              message: `Your certificate for "${cls.title}" has been submitted for coordinator approval.`,
               link: "/student-dashboard",
             });
             broadcastToUser(booking.studentId, { type: "notification", payload: notif });
-            // Send completion email (fire-and-forget)
-            if (cert) {
-              sendCourseCompletionEmail(student.email, student.name, cls.title, cert.verificationCode).catch((err) => console.error("Email send failed:", err.message));
+            // Notify the teacher too
+            if (cls.tutorId) {
+              await storage.createNotification({
+                userId: cls.tutorId,
+                type: "system",
+                title: `Certificate pending approval`,
+                message: `${student.name} has completed "${cls.title}". A certificate is awaiting coordinator approval.`,
+                link: "/teacher-dashboard",
+              }).catch(() => {});
             }
+            // Completion email is sent upon coordinator approval, not here
           }
         } catch (certErr) {
           console.error("Certificate auto-issue failed:", certErr);
@@ -1756,21 +1764,30 @@ export async function registerRoutes(
                     courseName: cls.title,
                     tutorName: tutor?.name || "Tutor",
                     verificationCode,
+                    status: "pending",
                   });
-                  // Send notification after certificate is created
+                  // Notify student — pending coordinator approval
                   try {
-                    const certLang = await getUserLang(storage, req.userId);
-                    const certText = getNotifText("certificate_earned", certLang, { className: cls.title });
                     const notif = await storage.createNotification({
                       userId: req.userId,
                       type: "system",
-                      title: certText.title,
-                      message: certText.message,
+                      title: `🎓 Course completed: ${cls.title}`,
+                      message: `Great work! Your certificate has been submitted to the coordinator for approval.`,
                       link: "/student-dashboard",
                     });
                     broadcastToUser(req.userId, { type: "notification", payload: notif });
                   } catch (err: any) {
                     console.error("Error sending notification:", err.message);
+                  }
+                  // Notify the teacher
+                  if (cls.tutorId && student) {
+                    storage.createNotification({
+                      userId: cls.tutorId,
+                      type: "system",
+                      title: `Certificate pending approval`,
+                      message: `${student.name} completed "${cls.title}". A certificate is awaiting coordinator approval.`,
+                      link: "/teacher-dashboard",
+                    }).catch(() => {});
                   }
                 }
               });
@@ -3643,25 +3660,117 @@ Give exactly 3 suggestions. Each "text" should describe their current progress c
         courseName: cls.title,
         tutorName: tutor.name,
         verificationCode,
+        status: "pending",
       }).returning();
       res.status(201).json(cert);
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
+  // Public certificate verification — only approved certificates
   app.get("/api/certificates/verify/:code", async (req, res) => {
     try {
       const result = await db.select().from(certificates)
-        .where(eq(certificates.verificationCode, req.params.code));
-      if (!result[0]) return res.status(404).json({ message: "Certificate not found or invalid code" });
+        .where(and(eq(certificates.verificationCode, req.params.code), eq(certificates.status, "approved")));
+      if (!result[0]) return res.status(404).json({ message: "Certificate not found, not yet approved, or invalid code" });
       res.json(result[0]);
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
+  // Student: get all my certificates (all statuses so student sees pending/rejected too)
   app.get("/api/certificates/my", authMiddleware, async (req, res) => {
     try {
       const result = await db.select().from(certificates)
-        .where(eq(certificates.studentId, req.userId));
+        .where(eq(certificates.studentId, req.userId))
+        .orderBy(desc(certificates.issuedAt));
       res.json(result);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // Teacher: get all certificates for classes they teach (all statuses)
+  app.get("/api/teacher/certificates", authMiddleware, async (req, res) => {
+    try {
+      const tutorClasses = await db.select({ id: classes.id }).from(classes).where(eq(classes.tutorId, req.userId));
+      const classIds = tutorClasses.map(c => c.id);
+      if (classIds.length === 0) return res.json([]);
+      const result = await db.select().from(certificates)
+        .where(inArray(certificates.classId, classIds))
+        .orderBy(desc(certificates.issuedAt));
+      res.json(result);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // Coordinator: get all pending certificates for approval
+  app.get("/api/coordinator/certificates", authMiddleware, async (req, res) => {
+    try {
+      const result = await db.select({
+        id: certificates.id,
+        studentId: certificates.studentId,
+        classId: certificates.classId,
+        studentName: certificates.studentName,
+        courseName: certificates.courseName,
+        tutorName: certificates.tutorName,
+        verificationCode: certificates.verificationCode,
+        issuedAt: certificates.issuedAt,
+        status: certificates.status,
+        rejectionReason: certificates.rejectionReason,
+        approvedAt: certificates.approvedAt,
+      }).from(certificates).orderBy(desc(certificates.issuedAt));
+      res.json(result);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // Coordinator: approve a certificate
+  app.patch("/api/coordinator/certificates/:id/approve", authMiddleware, async (req, res) => {
+    try {
+      const certId = Number(req.params.id);
+      const [cert] = await db.update(certificates)
+        .set({ status: "approved", approvedAt: new Date(), approvedBy: req.userId, rejectionReason: null })
+        .where(eq(certificates.id, certId))
+        .returning();
+      if (!cert) return res.status(404).json({ message: "Certificate not found" });
+
+      // Notify the student
+      await storage.createNotification({
+        userId: cert.studentId!,
+        type: "system",
+        title: `🎓 Certificate approved!`,
+        message: `Your certificate for "${cert.courseName}" has been approved. You can now download and share it.`,
+        link: "/student-dashboard",
+      });
+      broadcastToUser(cert.studentId!, { type: "notification", payload: { title: "Certificate approved!" } });
+
+      // Send completion email now
+      const student = await storage.getUser(cert.studentId!);
+      if (student) {
+        sendCourseCompletionEmail(student.email, student.name, cert.courseName, cert.verificationCode)
+          .catch((e: any) => console.error("Cert email failed:", e.message));
+      }
+      res.json(cert);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // Coordinator: reject a certificate
+  app.patch("/api/coordinator/certificates/:id/reject", authMiddleware, async (req, res) => {
+    try {
+      const certId = Number(req.params.id);
+      const { reason } = req.body;
+      if (!reason?.trim()) return res.status(400).json({ message: "Rejection reason is required" });
+      const [cert] = await db.update(certificates)
+        .set({ status: "rejected", rejectionReason: reason.trim(), approvedAt: null })
+        .where(eq(certificates.id, certId))
+        .returning();
+      if (!cert) return res.status(404).json({ message: "Certificate not found" });
+
+      // Notify the student
+      await storage.createNotification({
+        userId: cert.studentId!,
+        type: "system",
+        title: `Certificate not approved`,
+        message: `Your certificate request for "${cert.courseName}" was not approved. Reason: ${reason.trim()}`,
+        link: "/student-dashboard",
+      });
+      broadcastToUser(cert.studentId!, { type: "notification", payload: { title: "Certificate not approved" } });
+      res.json(cert);
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 

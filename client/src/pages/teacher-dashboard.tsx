@@ -229,9 +229,9 @@ export default function TeacherDashboard() {
     enabled: (myClasses || []).length > 0,
   });
 
-  const { data: myCertificates = [] } = useQuery({
-    queryKey: ['certificates', 'my'],
-    queryFn: () => authFetch('/api/certificates/my'),
+  const { data: myCertificates = [] } = useQuery<any[]>({
+    queryKey: ['teacher', 'certificates'],
+    queryFn: () => authFetch('/api/teacher/certificates'),
     enabled: !!user,
   });
 
@@ -576,7 +576,16 @@ export default function TeacherDashboard() {
                 { label: 'Students Helped', value: totalStudentsHelped, icon: Users, bg: 'bg-indigo-50 dark:bg-indigo-950/30', color: 'text-indigo-600' },
                 { label: 'Hours Volunteered', value: `${hoursVolunteered}h`, icon: Flame, bg: 'bg-orange-50 dark:bg-orange-950/30', color: 'text-orange-500' },
                 { label: 'Quiz Attempts', value: (allQuizResults as any[]).length, icon: Target, bg: 'bg-sky-50 dark:bg-sky-950/30', color: 'text-sky-600' },
-                { label: 'Certificates Issued', value: (myCertificates as any[]).length, icon: GraduationCap, bg: 'bg-emerald-50 dark:bg-emerald-950/30', color: 'text-emerald-600' },
+                {
+                  label: 'Certificates Issued',
+                  value: (myCertificates as any[]).filter((c: any) => c.status === 'approved').length,
+                  icon: GraduationCap,
+                  bg: 'bg-emerald-50 dark:bg-emerald-950/30',
+                  color: 'text-emerald-600',
+                  sub: (myCertificates as any[]).filter((c: any) => c.status === 'pending').length > 0
+                    ? `${(myCertificates as any[]).filter((c: any) => c.status === 'pending').length} pending approval`
+                    : undefined,
+                },
                 { label: 'Pending Grades', value: pendingGradesCount, icon: ClipboardList, bg: 'bg-amber-50 dark:bg-amber-950/30', color: 'text-amber-600' },
               ].map(stat => (
                 <Card key={stat.label} className={`border border-border/60 dark:border-slate-800 shadow-sm ${stat.bg}`}>
@@ -585,6 +594,9 @@ export default function TeacherDashboard() {
                     <div>
                       <p className="text-xl font-bold text-foreground">{stat.value}</p>
                       <p className="text-xs text-slate-500 dark:text-slate-400">{stat.label}</p>
+                      {(stat as any).sub && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mt-0.5">{(stat as any).sub}</p>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

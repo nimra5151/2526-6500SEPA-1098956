@@ -345,6 +345,10 @@ export const certificates = pgTable("certificates", {
   tutorName: text("tutor_name"),
   verificationCode: text("verification_code").notNull().unique(),
   issuedAt: timestamp("issued_at").defaultNow(),
+  status: text("status").notNull().default("pending"),
+  rejectionReason: text("rejection_reason"),
+  approvedAt: timestamp("approved_at"),
+  approvedBy: integer("approved_by").references(() => users.id),
 }, (table) => ({
   certificatesStudentIdIdx: index("certificates_student_id_idx").on(table.studentId),
   certificatesStudentClassUniqueIdx: uniqueIndex("certificates_student_class_idx").on(table.studentId, table.classId),

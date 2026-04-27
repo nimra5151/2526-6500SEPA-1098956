@@ -20,6 +20,7 @@ import {
   GraduationCap, Trash2, Ban, UserCheck, Loader2,
   X, MessageSquare, Download, Clock, ThumbsUp, ThumbsDown, BarChart3,
   Megaphone, Trophy, HeartHandshake, RefreshCw, FileText, Send, UserCog, CalendarClock,
+  Award,
 } from 'lucide-react';
 import { DashboardSkeleton, StatCard, PageHeader, TableRowSkeleton } from '@/components/skeleton-loader';
 import { StaggeredStatGrid, DataTableCard } from '@/components/dashboard-ui';
@@ -55,6 +56,9 @@ const AdminDashboard = () => {
   const [confirmBulk, setConfirmBulk] = useState<{ ids: number[]; action: string } | null>(null);
   const [deletingClass, setDeletingClass] = useState<any>(null);
   const [removingQuiz, setRemovingQuiz] = useState<any>(null);
+  const [rejectingCert, setRejectingCert] = useState<any>(null);
+  const [rejectCertReason, setRejectCertReason] = useState('');
+  const [certFilter, setCertFilter] = useState<'pending' | 'approved' | 'rejected' | 'all'>('pending');
 
   const { data: allUsers = [], isLoading: usersLoading } = useQuery({
     queryKey: ['admin', 'users'],
@@ -96,6 +100,33 @@ const AdminDashboard = () => {
     queryKey: ['admin', 'notifications'],
     queryFn: () => authFetch('/api/admin/notifications?limit=50'),
     staleTime: 60_000,
+  });
+
+  const { data: allCertificates = [], isLoading: certsLoading } = useQuery<any[]>({
+    queryKey: ['coordinator', 'certificates'],
+    queryFn: () => authFetch('/api/coordinator/certificates'),
+    staleTime: 30_000,
+  });
+
+  const approveCertMutation = useMutation({
+    mutationFn: (certId: number) => authFetch(`/api/coordinator/certificates/${certId}/approve`, { method: 'PATCH' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['coordinator', 'certificates'] });
+      toast({ title: 'Certificate approved — student has been notified.' });
+    },
+    onError: (e: any) => toast({ title: 'Failed to approve', description: e.message, variant: 'destructive' }),
+  });
+
+  const rejectCertMutation = useMutation({
+    mutationFn: ({ certId, reason }: { certId: number; reason: string }) =>
+      authFetch(`/api/coordinator/certificates/${certId}/reject`, { method: 'PATCH', body: JSON.stringify({ reason }) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['coordinator', 'certificates'] });
+      toast({ title: 'Certificate rejected — student has been notified.' });
+      setRejectingCert(null);
+      setRejectCertReason('');
+    },
+    onError: (e: any) => toast({ title: 'Failed to reject', description: e.message, variant: 'destructive' }),
   });
 
   const { data: allQuizzes = [] } = useQuery({
@@ -602,6 +633,15 @@ const AdminDashboard = () => {
             <TabsTrigger value="communications" className="text-sm rounded-md data-[state=active]:bg-indigo-600 data-[state=active]:text-white">
               <Megaphone className="w-4 h-4 mr-2" />
               Communications
+            </TabsTrigger>
+            <TabsTrigger value="certificates" className="text-sm rounded-md data-[state=active]:bg-indigo-600 data-[state=active]:text-white relative">
+              <Award className="w-4 h-4 mr-2" />
+              Certificates
+              {(allCertificates as any[]).filter((c: any) => c.status === 'pending').length > 0 && (
+                <span className="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-500 text-white text-[10px] font-bold">
+                  {(allCertificates as any[]).filter((c: any) => c.status === 'pending').length}
+                </span>
+              )}
             </TabsTrigger>
           </TabsList>
           </div>
@@ -1994,6 +2034,141 @@ const AdminDashboard = () => {
             </Card>
           </TabsContent>
 
+          {/* ─── Certificates Approval Tab ─── */}
+          <TabsContent value="certificates" className="space-y-6">
+            {/* Summary counts */}
+            <div className="grid grid-cols-3 gap-4">
+              {[
+                { label: 'Pending Approval', value: (allCertificates as any[]).filter((c: any) => c.status === 'pending').length, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/20', border: 'border-amber-200 dark:border-amber-800/40' },
+                { label: 'Approved', value: (allCertificates as any[]).filter((c: any) => c.status === 'approved').length, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/20', border: 'border-emerald-200 dark:border-emerald-800/40' },
+                { label: 'Rejected', value: (allCertificates as any[]).filter((c: any) => c.status === 'rejected').length, color: 'text-red-500', bg: 'bg-red-50 dark:bg-red-950/20', border: 'border-red-200 dark:border-red-800/40' },
+              ].map(s => (
+                <Card key={s.label} className={`border ${s.border} ${s.bg} shadow-sm`}>
+                  <CardContent className="p-5 text-center">
+                    <p className={`text-3xl font-bold ${s.color}`}>{s.value}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{s.label}</p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* Filter bar */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {(['pending', 'approved', 'rejected', 'all'] as const).map(f => (
+                <button
+                  key={f}
+                  onClick={() => setCertFilter(f)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors capitalize ${certFilter === f ? 'bg-indigo-600 text-white' : 'bg-card border border-border text-foreground hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                >
+                  {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+                  {f !== 'all' && (
+                    <span className="ml-1.5 text-xs opacity-70">
+                      ({(allCertificates as any[]).filter((c: any) => c.status === f).length})
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Certificates list */}
+            <Card className="border border-border/60 dark:border-slate-800 shadow-sm">
+              <CardHeader className="border-b dark:border-slate-700">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Award className="w-5 h-5 text-indigo-500" />
+                  {certFilter === 'all' ? 'All Certificates' : `${certFilter.charAt(0).toUpperCase() + certFilter.slice(1)} Certificates`}
+                  <span className="text-sm font-normal text-slate-500 ml-1">
+                    ({(allCertificates as any[]).filter((c: any) => certFilter === 'all' || c.status === certFilter).length})
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {certsLoading ? (
+                  <div className="p-8 text-center text-slate-500">
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" /> Loading certificates…
+                  </div>
+                ) : (allCertificates as any[]).filter((c: any) => certFilter === 'all' || c.status === certFilter).length === 0 ? (
+                  <div className="py-12 text-center text-slate-500 text-sm">
+                    <Award className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                    <p>No {certFilter !== 'all' ? certFilter : ''} certificates found.</p>
+                  </div>
+                ) : (
+                  <div className="divide-y dark:divide-slate-700">
+                    {(allCertificates as any[])
+                      .filter((c: any) => certFilter === 'all' || c.status === certFilter)
+                      .map((cert: any) => (
+                        <div key={cert.id} className="flex items-start gap-4 px-6 py-4 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                          {/* Status icon */}
+                          <div className={`mt-1 w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
+                            cert.status === 'approved' ? 'bg-emerald-100 dark:bg-emerald-900/30' :
+                            cert.status === 'rejected' ? 'bg-red-100 dark:bg-red-900/30' :
+                            'bg-amber-100 dark:bg-amber-900/30'
+                          }`}>
+                            {cert.status === 'approved'
+                              ? <CheckCircle className="w-5 h-5 text-emerald-600" />
+                              : cert.status === 'rejected'
+                              ? <XCircle className="w-5 h-5 text-red-500" />
+                              : <Clock className="w-5 h-5 text-amber-600" />
+                            }
+                          </div>
+
+                          {/* Info */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-semibold text-sm text-foreground">{cert.studentName}</p>
+                              <span className="text-slate-400 text-xs">→</span>
+                              <p className="text-sm text-slate-600 dark:text-slate-300 truncate">{cert.courseName}</p>
+                            </div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                              Teacher: {cert.tutorName} · Submitted: {cert.issuedAt ? new Date(cert.issuedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A'}
+                            </p>
+                            {cert.status === 'rejected' && cert.rejectionReason && (
+                              <p className="text-xs text-red-600 dark:text-red-400 mt-1 italic">Reason: {cert.rejectionReason}</p>
+                            )}
+                            {cert.status === 'approved' && cert.approvedAt && (
+                              <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
+                                Approved {new Date(cert.approvedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Status badge + actions */}
+                          <div className="flex items-center gap-2 shrink-0">
+                            <Badge className={`text-xs ${
+                              cert.status === 'approved' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                              cert.status === 'rejected' ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' :
+                              'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                            }`}>
+                              {cert.status}
+                            </Badge>
+                            {cert.status === 'pending' && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white h-8"
+                                  disabled={approveCertMutation.isPending}
+                                  onClick={() => approveCertMutation.mutate(cert.id)}
+                                >
+                                  <CheckCircle className="w-3.5 h-3.5 mr-1" /> Approve
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  className="h-8"
+                                  onClick={() => { setRejectingCert(cert); setRejectCertReason(''); }}
+                                >
+                                  <XCircle className="w-3.5 h-3.5 mr-1" /> Reject
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           {selectedReport && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setSelectedReport(null)}>
               <div className="bg-card rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -2440,6 +2615,55 @@ const AdminDashboard = () => {
               >
                 Confirm {confirmBulk.action}
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Certificate Rejection Dialog */}
+      {rejectingCert && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setRejectingCert(null); }}
+        >
+          <div className="bg-background rounded-2xl border shadow-2xl w-full max-w-md space-y-0 overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h3 className="font-semibold text-red-700 dark:text-red-400 flex items-center gap-2">
+                <XCircle className="w-5 h-5" /> Reject Certificate
+              </h3>
+              <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => setRejectingCert(null)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 px-4 py-3 border border-border">
+                <p className="text-sm font-medium text-foreground">{rejectingCert.studentName}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{rejectingCert.courseName} · Teacher: {rejectingCert.tutorName}</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">
+                  Reason for rejection <span className="text-red-500">*</span>
+                </label>
+                <Textarea
+                  placeholder="Explain why this certificate is being rejected (e.g. incomplete coursework, attendance issues)…"
+                  value={rejectCertReason}
+                  onChange={e => setRejectCertReason(e.target.value)}
+                  className="min-h-[90px] text-sm"
+                />
+                <p className="text-xs text-slate-500 mt-1">The student and teacher will both be notified with this reason.</p>
+              </div>
+              <div className="flex gap-3 pt-1">
+                <Button
+                  variant="destructive"
+                  className="flex-1"
+                  disabled={!rejectCertReason.trim() || rejectCertMutation.isPending}
+                  onClick={() => rejectCertMutation.mutate({ certId: rejectingCert.id, reason: rejectCertReason })}
+                >
+                  {rejectCertMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <XCircle className="w-4 h-4 mr-2" />}
+                  Reject Certificate
+                </Button>
+                <Button variant="outline" onClick={() => setRejectingCert(null)}>Cancel</Button>
+              </div>
             </div>
           </div>
         </div>
