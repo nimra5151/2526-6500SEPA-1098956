@@ -314,19 +314,19 @@ function AppContent() {
       <OfflineBanner />
       {!hideChrome && <Navbar />}
       <main id="main-content" className={`flex-1 ${!hideChrome ? "pb-16 md:pb-0" : ""}`}>
-        <ErrorBoundary>
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={location}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-            >
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={location}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            <ErrorBoundary key={location}>
               <Router />
-            </motion.div>
-          </AnimatePresence>
-        </ErrorBoundary>
+            </ErrorBoundary>
+          </motion.div>
+        </AnimatePresence>
       </main>
       {!hideChrome && <Footer />}
       {!hideChrome && <MobileBottomNav />}

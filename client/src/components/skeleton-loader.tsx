@@ -9,6 +9,10 @@ interface ErrorBoundaryState { hasError: boolean; error?: Error }
 export class ErrorBoundary extends Component<{ children: ReactNode; fallback?: ReactNode }, ErrorBoundaryState> {
   constructor(props: any) { super(props); this.state = { hasError: false }; }
   static getDerivedStateFromError(error: Error) { return { hasError: true, error }; }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[ErrorBoundary] Caught render error:', error);
+    console.error('[ErrorBoundary] Component stack:', info.componentStack);
+  }
   render() {
     if (this.state.hasError) {
       return this.props.fallback ?? (
