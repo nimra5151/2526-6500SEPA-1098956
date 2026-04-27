@@ -1053,8 +1053,8 @@ export async function registerRoutes(
       const progressForClass = await db.select({ studentId: courseProgress.userId, completed: courseProgress.completed })
         .from(courseProgress).where(eq(courseProgress.classId, classId));
 
-      // Certificates
-      const certsForClass = await db.select({ studentId: certificates.studentId })
+      // Certificates (include status so UI can show pending/approved)
+      const certsForClass = await db.select({ studentId: certificates.studentId, status: certificates.status })
         .from(certificates).where(eq(certificates.classId, classId));
 
       // Load student names
@@ -1068,7 +1068,8 @@ export async function registerRoutes(
         const mySubmissions = submissionsForClass.filter((r) => r.studentId === sid);
         const myProgress = progressForClass.filter((r) => r.studentId === sid);
         const completedLectures = myProgress.filter((r) => r.completed).length;
-        const hasCert = certsForClass.some((c) => c.studentId === sid);
+        const myCert = certsForClass.find((c) => c.studentId === sid);
+        const hasCert = !!myCert;
         const avgGrade = mySubmissions.length
           ? Math.round(mySubmissions.reduce((s, r) => s + (r.grade || 0), 0) / mySubmissions.length)
           : null;
@@ -1086,6 +1087,7 @@ export async function registerRoutes(
           totalAssignments: aIds.length,
           avgGrade,
           hasCertificate: hasCert,
+          certificateStatus: myCert?.status || null,
         };
       });
 
@@ -1369,57 +1371,25 @@ export async function registerRoutes(
 
       const updated = await storage.updateBooking(Number(req.params.id), { status: status as Booking["status"] });
 
-      // Auto-issue certificate and notify student on completion
+      // Notify student that session is marked completed; teacher will issue certificate manually
       if (status === "completed") {
         try {
           const student = await storage.getUser(booking.studentId);
           const cls = booking.classId ? await storage.getClass(booking.classId) : null;
-          const tutor = await storage.getUser(booking.tutorId);
           if (student && cls) {
-            // Check if certificate already exists
-            const andOp = and;
-            const existing = await db.select().from(certificates)
-              .where(andOp(eq(certificates.studentId, booking.studentId), eq(certificates.classId, booking.classId!)))
-              .limit(1); // #8: proper exists query
-            let cert = existing[0];
-            if (!cert) {
-              const verificationCode = crypto.randomUUID();
-              [cert] = await db.insert(certificates).values({
-                studentId: booking.studentId,
-                classId: booking.classId,
-                bookingId: booking.id,
-                studentName: student.name,
-                courseName: cls.title,
-                tutorName: tutor?.name || "Tutor",
-                verificationCode,
-                status: "pending",
-              }).returning();
-            }
-            // Notify student — certificate pending coordinator approval
             const sessLang = await getUserLang(storage, booking.studentId);
             const sessText = getNotifText("session_completed", sessLang, { className: cls.title });
             const notif = await storage.createNotification({
               userId: booking.studentId,
               type: "system",
               title: sessText.title,
-              message: `Your certificate for "${cls.title}" has been submitted for coordinator approval.`,
+              message: `Your session for "${cls.title}" has been marked completed. Your teacher will issue a certificate when ready.`,
               link: "/student-dashboard",
             });
             broadcastToUser(booking.studentId, { type: "notification", payload: notif });
-            // Notify the teacher too
-            if (cls.tutorId) {
-              await storage.createNotification({
-                userId: cls.tutorId,
-                type: "system",
-                title: `Certificate pending approval`,
-                message: `${student.name} has completed "${cls.title}". A certificate is awaiting coordinator approval.`,
-                link: "/teacher-dashboard",
-              }).catch(() => {});
-            }
-            // Completion email is sent upon coordinator approval, not here
           }
         } catch (certErr) {
-          console.error("Certificate auto-issue failed:", certErr);
+          console.error("Session completion notification failed:", certErr);
         }
       }
 
@@ -1739,7 +1709,7 @@ export async function registerRoutes(
         watchTimeSeconds: Number(watchTimeSeconds) || 0,
       });
 
-      // Auto-issue certificate when all lectures are completed
+      // Notify teacher when student finishes all lectures — teacher can then issue a certificate
       if (completed) {
         try {
           const cls = await storage.getClass(Number(classId));
@@ -1747,50 +1717,28 @@ export async function registerRoutes(
             const allProgress = await storage.getCourseProgress(req.userId, Number(classId));
             const completedCount = allProgress.filter((p) => p.completed).length;
             if (completedCount >= (cls.totalLectures || 1)) {
-              await db.transaction(async (tx) => {
-                const _and = and;
-                const existing = await tx.select().from(certificates)
-                  .where(_and(eq(certificates.studentId, req.userId), eq(certificates.classId, Number(classId))))
-                  .limit(1);
-                if (!existing[0]) {
-                  const student = await storage.getUser(req.userId);
-                  const tutor = await storage.getUser(cls.tutorId);
-                  const verificationCode = crypto.randomUUID();
-                  await tx.insert(certificates).values({
-                    studentId: req.userId,
-                    classId: Number(classId),
-                    bookingId: null,
-                    studentName: student?.name || "Student",
-                    courseName: cls.title,
-                    tutorName: tutor?.name || "Tutor",
-                    verificationCode,
-                    status: "pending",
-                  });
-                  // Notify student — pending coordinator approval
-                  try {
-                    const notif = await storage.createNotification({
-                      userId: req.userId,
-                      type: "system",
-                      title: `🎓 Course completed: ${cls.title}`,
-                      message: `Great work! Your certificate has been submitted to the coordinator for approval.`,
-                      link: "/student-dashboard",
-                    });
-                    broadcastToUser(req.userId, { type: "notification", payload: notif });
-                  } catch (err: any) {
-                    console.error("Error sending notification:", err.message);
-                  }
-                  // Notify the teacher
-                  if (cls.tutorId && student) {
-                    storage.createNotification({
-                      userId: cls.tutorId,
-                      type: "system",
-                      title: `Certificate pending approval`,
-                      message: `${student.name} completed "${cls.title}". A certificate is awaiting coordinator approval.`,
-                      link: "/teacher-dashboard",
-                    }).catch(() => {});
-                  }
-                }
-              });
+              const student = await storage.getUser(req.userId);
+              // Notify the student they finished
+              try {
+                const notif = await storage.createNotification({
+                  userId: req.userId,
+                  type: "system",
+                  title: `🎓 Course completed: ${cls.title}`,
+                  message: `Great work! You've completed all lessons. Your teacher will review and issue your certificate.`,
+                  link: "/student-dashboard",
+                });
+                broadcastToUser(req.userId, { type: "notification", payload: notif });
+              } catch {}
+              // Notify the teacher so they can issue the certificate
+              if (cls.tutorId && student) {
+                storage.createNotification({
+                  userId: cls.tutorId,
+                  type: "system",
+                  title: `Student ready for certificate`,
+                  message: `${student.name} has completed all lessons in "${cls.title}". You can now issue their certificate from the class progress page.`,
+                  link: `/classes/${classId}/progress`,
+                }).catch(() => {});
+              }
             }
           }
         } catch {}
@@ -3616,9 +3564,14 @@ Give exactly 3 suggestions. Each "text" should describe their current progress c
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
-  // CERTIFICATES with verification UUID
+  // CERTIFICATES with verification UUID — restricted to tutor/coordinator; students receive certs via teacher
   app.post("/api/certificates", authMiddleware, async (req, res) => {
     try {
+      const requestingUser = await storage.getUser(req.userId);
+      if (requestingUser?.role === "student") {
+        return res.status(403).json({ message: "Certificates are issued by your teacher. Please ask your teacher to issue your certificate from the class progress page." });
+      }
+
       const { classId } = req.body;
       if (!classId) {
         return res.status(400).json({ message: "classId is required" });
@@ -3696,6 +3649,75 @@ Give exactly 3 suggestions. Each "text" should describe their current progress c
         .where(inArray(certificates.classId, classIds))
         .orderBy(desc(certificates.issuedAt));
       res.json(result);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // Teacher: manually issue a certificate for a student in their class
+  app.post("/api/teacher/issue-certificate", authMiddleware, async (req, res) => {
+    try {
+      const { studentId, classId } = req.body;
+      if (!studentId || !classId) return res.status(400).json({ message: "studentId and classId are required" });
+
+      // Verify teacher owns this class
+      const cls = await storage.getClass(Number(classId));
+      if (!cls) return res.status(404).json({ message: "Class not found" });
+      if (cls.tutorId !== req.userId) return res.status(403).json({ message: "You can only issue certificates for your own classes" });
+
+      // Verify student exists and is enrolled
+      const student = await storage.getUser(Number(studentId));
+      if (!student) return res.status(404).json({ message: "Student not found" });
+
+      const enrollment = await db.select().from(bookings)
+        .where(and(eq(bookings.studentId, Number(studentId)), eq(bookings.classId, Number(classId)), ne(bookings.status, "cancelled")))
+        .limit(1);
+      if (!enrollment[0]) return res.status(400).json({ message: "Student is not enrolled in this class" });
+
+      // Check if certificate already exists for this student + class
+      const existing = await db.select().from(certificates)
+        .where(and(eq(certificates.studentId, Number(studentId)), eq(certificates.classId, Number(classId))))
+        .limit(1);
+      if (existing[0]) return res.status(409).json({ message: "A certificate already exists for this student in this class", existing: existing[0] });
+
+      const teacher = await storage.getUser(req.userId);
+      const verificationCode = crypto.randomUUID();
+      const [cert] = await db.insert(certificates).values({
+        studentId: Number(studentId),
+        classId: Number(classId),
+        bookingId: enrollment[0].id || null,
+        studentName: student.name,
+        courseName: cls.title,
+        tutorName: teacher?.name || "Teacher",
+        verificationCode,
+        status: "pending",
+      }).returning();
+
+      // Notify student — certificate issued by teacher, pending coordinator approval
+      try {
+        const notif = await storage.createNotification({
+          userId: Number(studentId),
+          type: "system",
+          title: `Certificate issued for ${cls.title}`,
+          message: `Your teacher has issued a certificate for "${cls.title}". It is now pending coordinator approval.`,
+          link: "/student-dashboard",
+        });
+        broadcastToUser(Number(studentId), { type: "notification", payload: notif });
+      } catch {}
+
+      // Notify coordinator(s)
+      try {
+        const coordinators = await db.select().from(users).where(eq(users.role, "coordinator"));
+        for (const coord of coordinators) {
+          await storage.createNotification({
+            userId: coord.id,
+            type: "system",
+            title: `New certificate to review`,
+            message: `${teacher?.name || "A teacher"} issued a certificate for ${student.name} in "${cls.title}". Awaiting your approval.`,
+            link: "/admin-dashboard",
+          }).catch(() => {});
+        }
+      } catch {}
+
+      res.status(201).json(cert);
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
