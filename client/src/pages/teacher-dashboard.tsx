@@ -57,6 +57,8 @@ export default function TeacherDashboard() {
   // Live Session dialog
   const [showLiveDialog, setShowLiveDialog] = useState(false);
   const [copiedClassId, setCopiedClassId] = useState<number | null>(null);
+  const [startingClassId, setStartingClassId] = useState<number | null>(null);
+  const [endingClassId, setEndingClassId] = useState<number | null>(null);
 
   // #167: announcement state
   const [announcingClass, setAnnouncingClass] = useState<any>(null);
@@ -2289,22 +2291,28 @@ export default function TeacherDashboard() {
 
       {/* Live Session Dialog */}
       {showLiveDialog && (
-        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4">
-          <div className="bg-background rounded-2xl border shadow-2xl w-full max-w-lg">
-            <div className="flex items-center justify-between p-5 border-b">
+        <div
+          className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowLiveDialog(false); }}
+        >
+          <div className="bg-background rounded-2xl border shadow-2xl w-full max-w-lg flex flex-col" style={{ maxHeight: 'min(90vh, 640px)' }}>
+            {/* Fixed header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
               <div>
                 <h3 className="font-semibold text-lg flex items-center gap-2">
                   <Video className="w-5 h-5 text-blue-600" /> Live Sessions
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">Start or manage Zoom sessions for your classes</p>
               </div>
-              <button onClick={() => setShowLiveDialog(false)} className="text-muted-foreground hover:text-foreground transition-colors">
+              <button onClick={() => setShowLiveDialog(false)} className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-muted">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-5 space-y-3 max-h-[60vh] overflow-y-auto">
+
+            {/* Scrollable content */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-3">
               {!myClasses || (myClasses as any[]).filter((c: any) => c.status === 'active').length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
+                <div className="text-center py-10 text-muted-foreground">
                   <Video className="w-10 h-10 mx-auto mb-3 opacity-30" />
                   <p className="text-sm">No active classes found.</p>
                   <p className="text-xs mt-1">Create an active class first to start a live session.</p>
@@ -2313,8 +2321,19 @@ export default function TeacherDashboard() {
                 (myClasses as any[]).filter((c: any) => c.status === 'active').map((cls: any) => {
                   const hasZoom = !!cls.zoomMeetingId;
                   const isCopied = copiedClassId === cls.id;
+                  const isThisStarting = startingClassId === cls.id;
+                  const isThisEnding = endingClassId === cls.id;
+
                   return (
-                    <div key={cls.id} className={`rounded-xl border p-4 space-y-3 transition-colors ${hasZoom ? 'border-blue-200 bg-blue-50/60 dark:border-blue-800 dark:bg-blue-950/20' : 'border-border bg-card'}`}>
+                    <div
+                      key={cls.id}
+                      className={`rounded-xl border p-4 space-y-3 transition-colors ${
+                        hasZoom
+                          ? 'border-blue-200 bg-blue-50/60 dark:border-blue-800 dark:bg-blue-950/20'
+                          : 'border-border bg-card'
+                      }`}
+                    >
+                      {/* Class name + status */}
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-sm truncate">{cls.title}</p>
@@ -2331,6 +2350,7 @@ export default function TeacherDashboard() {
                         )}
                       </div>
 
+                      {/* Join link row (only when active) */}
                       {hasZoom && cls.zoomMeetingUrl && (
                         <div className="flex items-center gap-2 bg-background rounded-lg px-3 py-2 border">
                           <code className="text-xs text-blue-600 dark:text-blue-400 truncate flex-1">{cls.zoomMeetingUrl}</code>
@@ -2341,30 +2361,38 @@ export default function TeacherDashboard() {
                               setTimeout(() => setCopiedClassId(null), 2000);
                             }}
                             className="text-muted-foreground hover:text-foreground shrink-0"
-                            title="Copy join link"
+                            title="Copy student join link"
                           >
                             {isCopied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
                           </button>
                         </div>
                       )}
 
+                      {/* Action buttons */}
                       <div className="flex gap-2 flex-wrap">
                         {!hasZoom ? (
                           <Button
                             size="sm"
                             className="bg-blue-600 hover:bg-blue-700 text-white"
-                            disabled={startZoomMutation.isPending}
+                            disabled={isThisStarting}
                             onClick={async () => {
+                              setStartingClassId(cls.id);
                               try {
-                                const result = await startZoomMutation.mutateAsync(cls.id);
+                                const result = await authFetch(`/api/live-class/${cls.id}/zoom`, { method: 'POST' });
+                                queryClient.invalidateQueries({ queryKey: ['classes', 'my', 'teaching'] });
+                                toast({ title: `Session started for "${cls.title}"! Opening Zoom…` });
                                 if (result?.hostUrl) {
                                   window.open(result.hostUrl, '_blank', 'noopener,noreferrer');
                                 }
-                              } catch {}
+                              } catch (err: any) {
+                                toast({ title: 'Failed to start session', description: err.message, variant: 'destructive' });
+                              } finally {
+                                setStartingClassId(null);
+                              }
                             }}
                           >
-                            {startZoomMutation.isPending
-                              ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Starting...</>
+                            {isThisStarting
+                              ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Starting…</>
                               : <><Video className="w-3.5 h-3.5 mr-1.5" /> Start Session</>}
                           </Button>
                         ) : (
@@ -2379,18 +2407,31 @@ export default function TeacherDashboard() {
                             <Button
                               size="sm"
                               variant="destructive"
-                              disabled={endZoomMutation.isPending}
-                              onClick={() => endZoomMutation.mutate(cls.id)}
+                              disabled={isThisEnding}
+                              onClick={async () => {
+                                setEndingClassId(cls.id);
+                                try {
+                                  await authFetch(`/api/live-class/${cls.id}/zoom`, { method: 'DELETE' });
+                                  queryClient.invalidateQueries({ queryKey: ['classes', 'my', 'teaching'] });
+                                  toast({ title: `Session ended for "${cls.title}".` });
+                                } catch (err: any) {
+                                  toast({ title: 'Failed to end session', description: err.message, variant: 'destructive' });
+                                } finally {
+                                  setEndingClassId(null);
+                                }
+                              }}
                             >
-                              <WifiOff className="w-3.5 h-3.5 mr-1.5" /> End Session
+                              {isThisEnding
+                                ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Ending…</>
+                                : <><WifiOff className="w-3.5 h-3.5 mr-1.5" /> End Session</>}
                             </Button>
                           </>
                         )}
                       </div>
 
                       {hasZoom && (
-                        <p className="text-xs text-muted-foreground">
-                          Students in this class have been notified and can join from their dashboard.
+                        <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                          ✓ Students in this class have been notified and can join from their dashboard.
                         </p>
                       )}
                     </div>
@@ -2398,7 +2439,9 @@ export default function TeacherDashboard() {
                 })
               )}
             </div>
-            <div className="px-5 py-4 border-t flex justify-end">
+
+            {/* Fixed footer */}
+            <div className="px-5 py-4 border-t shrink-0 flex justify-end">
               <Button variant="outline" size="sm" onClick={() => setShowLiveDialog(false)}>Close</Button>
             </div>
           </div>
