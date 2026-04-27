@@ -255,6 +255,15 @@ export default function TeacherDashboard() {
     onError: (err: Error) => toast({ title: 'Failed to submit grade', description: err.message, variant: 'destructive' }),
   });
 
+  const deleteLessonMutation = useMutation({
+    mutationFn: (lessonId: number) => authFetch(`/api/lessons/${lessonId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lessons', 'my'] });
+      toast({ title: 'Lesson deleted.' });
+    },
+    onError: (err: Error) => toast({ title: 'Failed to delete lesson', description: err.message, variant: 'destructive' }),
+  });
+
   const deleteQuizMutation = useMutation({
     mutationFn: (quizId: number) => authFetch(`/api/quizzes/${quizId}`, { method: 'DELETE' }),
     onSuccess: () => {
@@ -980,8 +989,20 @@ export default function TeacherDashboard() {
                                 <Button size="sm" variant="outline" className="h-7 text-xs"
                                   disabled={duplicateLessonMutation.isPending}
                                   onClick={() => setConfirmDuplicate(lesson)}>
-                                  {/* #84: confirmation before duplicate */}
                                   Duplicate
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20"
+                                  disabled={deleteLessonMutation.isPending}
+                                  onClick={() => {
+                                    if (window.confirm(`Delete "${lesson.title}"? This cannot be undone.`)) {
+                                      deleteLessonMutation.mutate(lesson.id);
+                                    }
+                                  }}
+                                >
+                                  <Trash2 className="w-3 h-3 mr-1" /> Delete
                                 </Button>
                               </div>
                             </div>

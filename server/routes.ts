@@ -2574,7 +2574,12 @@ export async function registerRoutes(
       if (!result[0]) return res.status(404).json({ message: "Lesson not found" });
       
       const lesson = result[0];
-      if (!lesson.classId) return res.status(404).json({ message: "Lesson not found" });
+
+      // If lesson has no classId, only the tutor who created it can view it
+      if (!lesson.classId) {
+        if (lesson.tutorId !== req.userId) return res.status(403).json({ message: "Access denied" });
+        return res.json(lesson);
+      }
       
       const cls = await storage.getClass(lesson.classId);
       if (!cls) return res.status(404).json({ message: "Class not found" });
