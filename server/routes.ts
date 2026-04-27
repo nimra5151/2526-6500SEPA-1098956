@@ -4257,6 +4257,56 @@ Give exactly 3 suggestions. Each "text" should describe their current progress c
     }
   });
 
+  // GET active live sessions for current user (tutor sees their own; student sees enrolled)
+  app.get("/api/live-sessions/active", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId;
+      const userRow = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+      const role = userRow[0]?.role;
+      let activeSessions: any[] = [];
+      if (role === "tutor") {
+        const tutorClasses = await db.select().from(classes)
+          .where(and(eq(classes.tutorId, userId), not(isNull(classes.zoomMeetingId))));
+        activeSessions = tutorClasses.map(c => ({
+          classId: c.id,
+          classTitle: c.title,
+          tutorName: userRow[0]?.name || "Tutor",
+          joinUrl: c.zoomMeetingUrl,
+          hostUrl: c.zoomHostUrl,
+          meetingId: c.zoomMeetingId,
+          isHost: true,
+        }));
+      } else {
+        // student: find enrolled classes with active zoom
+        const enrolled = await db.select({ classId: bookings.classId }).from(bookings)
+          .where(and(eq(bookings.studentId, userId), ne(bookings.status, "cancelled")));
+        const enrolledIds = [...new Set(enrolled.map(e => e.classId).filter(Boolean))] as number[];
+        if (enrolledIds.length > 0) {
+          const activeClasses = await db.select({
+            id: classes.id, title: classes.title, tutorId: classes.tutorId,
+            zoomMeetingUrl: classes.zoomMeetingUrl, zoomHostUrl: classes.zoomHostUrl,
+            zoomMeetingId: classes.zoomMeetingId,
+          }).from(classes).where(and(inArray(classes.id, enrolledIds), not(isNull(classes.zoomMeetingId))));
+          const tutorIds = [...new Set(activeClasses.map(c => c.tutorId).filter(Boolean))] as number[];
+          const tutorRows = tutorIds.length > 0
+            ? await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, tutorIds))
+            : [];
+          const tutorMap = Object.fromEntries(tutorRows.map(t => [t.id, t.name]));
+          activeSessions = activeClasses.map(c => ({
+            classId: c.id,
+            classTitle: c.title,
+            tutorName: tutorMap[c.tutorId!] || "Tutor",
+            joinUrl: c.zoomMeetingUrl,
+            hostUrl: null,
+            meetingId: c.zoomMeetingId,
+            isHost: false,
+          }));
+        }
+      }
+      res.json(activeSessions);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   // POST create a Zoom meeting for a class (teacher only)
   app.post("/api/live-class/:classId/zoom", authMiddleware, async (req: Request, res: Response) => {
     try {
@@ -4277,6 +4327,24 @@ Give exactly 3 suggestions. Each "text" should describe their current progress c
         zoomMeetingUrl: meeting.join_url,
         zoomHostUrl: meeting.start_url,
       });
+
+      // Notify all enrolled students (fire-and-forget)
+      db.select({ studentId: bookings.studentId }).from(bookings)
+        .where(and(eq(bookings.classId, cls.id), ne(bookings.status, "cancelled")))
+        .then(rows => {
+          const uniqueIds = [...new Set(rows.map(r => r.studentId).filter(Boolean))] as number[];
+          return Promise.allSettled(uniqueIds.map(sid =>
+            storage.createNotification({
+              userId: sid,
+              type: "system",
+              title: `🔴 Live session started: ${cls.title}`,
+              message: `Your teacher has started a live Zoom session. Click to join now.`,
+              link: meeting.join_url,
+            })
+          ));
+        })
+        .catch((e: any) => console.error("Live session notifications failed:", e.message));
+
       res.json({
         exists: true,
         meetingId: String(meeting.id),

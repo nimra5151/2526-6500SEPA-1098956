@@ -14,7 +14,7 @@ import { StaggeredStatGrid } from '@/components/dashboard-ui';
 import {
   BookOpen, Clock, Award, Calendar,
   Flame, HelpCircle, MessageCircle, AlertCircle,
-  Star, Zap, Trophy, Target,
+  Star, Zap, Trophy, Target, Video, ExternalLink, X, Wifi,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -44,6 +44,7 @@ export default function StudentDashboard() {
   const [reviewingBooking, setReviewingBooking] = useState<Booking | null>(null);
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
+  const [showLiveDialog, setShowLiveDialog] = useState(false);
   const [reviewingQuizResult, setReviewingQuizResult] = useState<QuizResult | null>(null);
 
   const { data: userSettings } = useQuery<any>({
@@ -138,6 +139,14 @@ export default function StudentDashboard() {
     queryFn: () => authFetch('/api/quizzes/for-student'),
     enabled: !!user,
     staleTime: 60_000,
+  });
+
+  const { data: activeSessions = [] } = useQuery<any[]>({
+    queryKey: ['/api/live-sessions/active'],
+    queryFn: () => authFetch('/api/live-sessions/active'),
+    enabled: !!user,
+    refetchInterval: 30_000,
+    staleTime: 20_000,
   });
 
   const { data: mySubmissions = [], isLoading: submissionsLoading, isError: submissionsError } = useQuery({
@@ -401,10 +410,27 @@ export default function StudentDashboard() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       <OnboardingModal userId={user?.id} userName={user?.name || 'Student'} role="student" />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <PageHeader
-          title="My Dashboard"
-          description={`Welcome back, ${user?.name || 'Student'}! Keep up the great work.`}
-        />
+        <div className="flex items-start justify-between mb-2 gap-4 flex-wrap">
+          <PageHeader
+            title="My Dashboard"
+            description={`Welcome back, ${user?.name || 'Student'}! Keep up the great work.`}
+          />
+          <Button
+            className={`shrink-0 relative ${(activeSessions as any[]).length > 0 ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-slate-700 hover:bg-slate-800 text-white dark:bg-slate-700 dark:hover:bg-slate-600'}`}
+            onClick={() => setShowLiveDialog(true)}
+          >
+            {(activeSessions as any[]).length > 0 && (
+              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
+            )}
+            <Video className="w-4 h-4 mr-2" />
+            Live Sessions
+            {(activeSessions as any[]).length > 0 && (
+              <span className="ml-2 inline-flex items-center justify-center w-5 h-5 text-xs font-bold bg-white/20 rounded-full">
+                {(activeSessions as any[]).length}
+              </span>
+            )}
+          </Button>
+        </div>
 
         {(statsError || classesError || bookingsError) && (
           <div className="mb-6 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30 px-4 py-3 text-sm text-red-700 dark:text-red-400">
@@ -596,6 +622,70 @@ export default function StudentDashboard() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Live Sessions Dialog */}
+      {showLiveDialog && (
+        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4">
+          <div className="bg-background rounded-2xl border shadow-2xl w-full max-w-lg">
+            <div className="flex items-center justify-between p-5 border-b">
+              <div>
+                <h3 className="font-semibold text-lg flex items-center gap-2">
+                  <Video className="w-5 h-5 text-blue-600" /> Live Sessions
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">Active Zoom sessions you can join right now</p>
+              </div>
+              <button onClick={() => setShowLiveDialog(false)} className="text-muted-foreground hover:text-foreground transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3 max-h-[60vh] overflow-y-auto">
+              {(activeSessions as any[]).length === 0 ? (
+                <div className="text-center py-10 text-muted-foreground">
+                  <Video className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                  <p className="font-medium text-sm">No live sessions right now</p>
+                  <p className="text-xs mt-1 max-w-xs mx-auto">
+                    When your teacher starts a live Zoom session, it will appear here. You will also get a notification.
+                  </p>
+                </div>
+              ) : (
+                (activeSessions as any[]).map((session: any) => (
+                  <div key={session.classId} className="rounded-xl border border-blue-200 bg-blue-50/60 dark:border-blue-800 dark:bg-blue-950/20 p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm truncate">{session.classTitle}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Hosted by {session.tutorName}</p>
+                      </div>
+                      <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 shrink-0">
+                        <Wifi className="w-3 h-3" />
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                        </span>
+                        Live
+                      </span>
+                    </div>
+                    <Button
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+                      onClick={() => {
+                        if (session.joinUrl) {
+                          window.open(session.joinUrl, '_blank', 'noopener,noreferrer');
+                        }
+                      }}
+                    >
+                      <ExternalLink className="w-4 h-4 mr-2" />
+                      Join Now — Opens Zoom
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="px-5 py-4 border-t flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">Auto-refreshes every 30 seconds</p>
+              <Button variant="outline" size="sm" onClick={() => setShowLiveDialog(false)}>Close</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Floating Help + Feedback buttons */}
       <div className="fixed bottom-6 right-6 flex flex-col gap-2 z-40">

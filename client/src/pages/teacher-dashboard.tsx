@@ -19,7 +19,8 @@ import {
   Calendar, MessageSquare,
   Plus, Video, Bell, Wand2, Star, Loader2, X, Download, ClipboardList,
   Flame, Target, Bot, MessageCircle, ChevronRight, Sparkles,
-  Flag, GraduationCap, Edit, Archive, RotateCcw, Megaphone, Trash2
+  Flag, GraduationCap, Edit, Archive, RotateCcw, Megaphone, Trash2,
+  ExternalLink, Copy, Check, WifiOff, Wifi,
 } from 'lucide-react';
 import { DashboardSkeleton, StatCard, PageHeader, ClassCardListSkeleton, ListItemSkeleton, EmptyState } from '@/components/skeleton-loader';
 import { StaggeredStatGrid } from '@/components/dashboard-ui';
@@ -53,6 +54,10 @@ export default function TeacherDashboard() {
   // #84: confirmation dialog state for destructive/expensive actions
   const [confirmArchive, setConfirmArchive] = useState<any>(null);
   const [confirmDuplicate, setConfirmDuplicate] = useState<any>(null);
+  // Live Session dialog
+  const [showLiveDialog, setShowLiveDialog] = useState(false);
+  const [copiedClassId, setCopiedClassId] = useState<number | null>(null);
+
   // #167: announcement state
   const [announcingClass, setAnnouncingClass] = useState<any>(null);
   const [announceTitle, setAnnounceTitle] = useState('');
@@ -552,16 +557,12 @@ export default function TeacherDashboard() {
                 </Link>
               ))}
               <Button
-                className="w-full h-14 flex-col gap-1 text-xs font-medium bg-sky-600 hover:bg-sky-700 text-white"
-                onClick={() => {
-                  const firstActive = (myClasses || []).find((c: any) => c.status === 'active');
-                  if (firstActive) {
-                    setLocation(`/live-class/${firstActive.id}`);
-                  } else {
-                    setActiveTab('my-classes');
-                  }
-                }}
+                className="w-full h-14 flex-col gap-1 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white relative"
+                onClick={() => setShowLiveDialog(true)}
               >
+                {(myClasses as any[] || []).some((c: any) => c.zoomMeetingId) && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                )}
                 <Video className="w-5 h-5" />
                 Live Session
               </Button>
@@ -2285,6 +2286,124 @@ export default function TeacherDashboard() {
           </div>
         )}
       </div>
+
+      {/* Live Session Dialog */}
+      {showLiveDialog && (
+        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4">
+          <div className="bg-background rounded-2xl border shadow-2xl w-full max-w-lg">
+            <div className="flex items-center justify-between p-5 border-b">
+              <div>
+                <h3 className="font-semibold text-lg flex items-center gap-2">
+                  <Video className="w-5 h-5 text-blue-600" /> Live Sessions
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">Start or manage Zoom sessions for your classes</p>
+              </div>
+              <button onClick={() => setShowLiveDialog(false)} className="text-muted-foreground hover:text-foreground transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3 max-h-[60vh] overflow-y-auto">
+              {!myClasses || (myClasses as any[]).filter((c: any) => c.status === 'active').length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Video className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                  <p className="text-sm">No active classes found.</p>
+                  <p className="text-xs mt-1">Create an active class first to start a live session.</p>
+                </div>
+              ) : (
+                (myClasses as any[]).filter((c: any) => c.status === 'active').map((cls: any) => {
+                  const hasZoom = !!cls.zoomMeetingId;
+                  const isCopied = copiedClassId === cls.id;
+                  return (
+                    <div key={cls.id} className={`rounded-xl border p-4 space-y-3 transition-colors ${hasZoom ? 'border-blue-200 bg-blue-50/60 dark:border-blue-800 dark:bg-blue-950/20' : 'border-border bg-card'}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm truncate">{cls.title}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{cls.enrolledCount || 0} students enrolled</p>
+                        </div>
+                        {hasZoom ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 shrink-0">
+                            <Wifi className="w-3 h-3" /> Live
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+                            <WifiOff className="w-3 h-3" /> No session
+                          </span>
+                        )}
+                      </div>
+
+                      {hasZoom && cls.zoomMeetingUrl && (
+                        <div className="flex items-center gap-2 bg-background rounded-lg px-3 py-2 border">
+                          <code className="text-xs text-blue-600 dark:text-blue-400 truncate flex-1">{cls.zoomMeetingUrl}</code>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(cls.zoomMeetingUrl);
+                              setCopiedClassId(cls.id);
+                              setTimeout(() => setCopiedClassId(null), 2000);
+                            }}
+                            className="text-muted-foreground hover:text-foreground shrink-0"
+                            title="Copy join link"
+                          >
+                            {isCopied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="flex gap-2 flex-wrap">
+                        {!hasZoom ? (
+                          <Button
+                            size="sm"
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                            disabled={startZoomMutation.isPending}
+                            onClick={async () => {
+                              try {
+                                const result = await startZoomMutation.mutateAsync(cls.id);
+                                if (result?.hostUrl) {
+                                  window.open(result.hostUrl, '_blank', 'noopener,noreferrer');
+                                }
+                              } catch {}
+                            }}
+                          >
+                            {startZoomMutation.isPending
+                              ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Starting...</>
+                              : <><Video className="w-3.5 h-3.5 mr-1.5" /> Start Session</>}
+                          </Button>
+                        ) : (
+                          <>
+                            <Button
+                              size="sm"
+                              className="bg-blue-600 hover:bg-blue-700 text-white"
+                              onClick={() => window.open(cls.zoomHostUrl || cls.zoomMeetingUrl, '_blank', 'noopener,noreferrer')}
+                            >
+                              <ExternalLink className="w-3.5 h-3.5 mr-1.5" /> Open Zoom (Host)
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              disabled={endZoomMutation.isPending}
+                              onClick={() => endZoomMutation.mutate(cls.id)}
+                            >
+                              <WifiOff className="w-3.5 h-3.5 mr-1.5" /> End Session
+                            </Button>
+                          </>
+                        )}
+                      </div>
+
+                      {hasZoom && (
+                        <p className="text-xs text-muted-foreground">
+                          Students in this class have been notified and can join from their dashboard.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            <div className="px-5 py-4 border-t flex justify-end">
+              <Button variant="outline" size="sm" onClick={() => setShowLiveDialog(false)}>Close</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* #84: Archive confirmation dialog */}
       {confirmArchive && (
