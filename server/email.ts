@@ -1,5 +1,13 @@
 import nodemailer from "nodemailer";
 
+// Resolve the public base URL for email links.
+// Priority: APP_URL (explicit production URL) → REPLIT_DEV_DOMAIN (Replit auto-provides this) → localhost fallback
+function getBaseUrl(): string {
+  if (process.env.APP_URL) return process.env.APP_URL;
+  if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
+  return "http://localhost:5000";
+}
+
 // #21: HTML-escape user-supplied data before inserting into email templates
 function escapeHtml(str: string): string {
   return String(str)
@@ -100,7 +108,7 @@ export async function sendBookingConfirmationEmail(to: string, studentName: stri
 export async function sendPasswordResetEmail(to: string, name: string, token: string) {
   if (!process.env.SMTP_USER) return;
   if (!isValidEmail(to)) throw new Error(`Invalid email address: ${to}`); // #26
-  const baseUrl = process.env.APP_URL || "http://localhost:5000";
+  const baseUrl = getBaseUrl();
   const link = `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;
   // #22: Re-throw so callers know if delivery failed
   await sendWithRetry({ // #25
@@ -127,7 +135,7 @@ export async function sendPasswordResetEmail(to: string, name: string, token: st
 export async function sendVerificationEmail(to: string, name: string, token: string) {
   if (!process.env.SMTP_USER) return;
   if (!isValidEmail(to)) throw new Error(`Invalid email address: ${to}`); // #26
-  const baseUrl = process.env.APP_URL || "http://localhost:5000";
+  const baseUrl = getBaseUrl();
   const link = `${baseUrl}/verify-email?token=${encodeURIComponent(token)}`;
   // #22: Re-throw so callers know if delivery failed
   await sendWithRetry({ // #25
@@ -163,7 +171,7 @@ export async function sendWeeklyDigestEmail(
   }
 ) {
   if (!process.env.SMTP_USER) return;
-  const baseUrl = process.env.APP_URL || "http://localhost:5000";
+  const baseUrl = getBaseUrl();
   const weeklyDigestHtml = emailWrapper(`
       <div style="background:linear-gradient(135deg,#667EEA,#764BA2);padding:32px;border-radius:12px 12px 0 0;text-align:center;">
         <h1 style="color:#fff;margin:0;font-size:24px;">📊 Weekly Activity Digest</h1>
@@ -210,7 +218,7 @@ export async function sendWeeklyDigestEmail(
 
 export async function sendCourseCompletionEmail(to: string, studentName: string, courseName: string, verificationCode: string) {
   if (!process.env.SMTP_USER) return;
-  const baseUrl = process.env.APP_URL || "http://localhost:5000";
+  const baseUrl = getBaseUrl();
   try {
     await sendWithRetry({
       from: `"TutorBridge" <${process.env.SMTP_USER}>`,
@@ -239,7 +247,7 @@ export async function sendCourseCompletionEmail(to: string, studentName: string,
 
 export async function sendTutorApprovedEmail(to: string, tutorName: string) {
   if (!process.env.SMTP_USER) return;
-  const baseUrl = process.env.APP_URL || "http://localhost:5000";
+  const baseUrl = getBaseUrl();
   try {
     await sendWithRetry({
       from: `"TutorBridge" <${process.env.SMTP_USER}>`,
