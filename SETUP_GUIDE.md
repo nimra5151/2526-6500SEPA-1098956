@@ -370,24 +370,9 @@ npm run db:push           # apply any database changes
 pm2 restart tutorbridge   # restart the app
 ```
 
----
-
-## Differences Between Running on Replit vs Your Own Server
-
-This table shows what's different between how the app runs on Replit (where it was built) and how it runs on your own computer or Hostinger:
-
-| Feature | Replit | Your own server |
-|---|---|---|
-| Database | Automatically provisioned | You create it manually (Step 4 above) |
-| `DATABASE_URL` | Set automatically | You set it in `.env` |
-| `SESSION_SECRET` | Set automatically | You must generate and set it |
-| HTTPS (SSL) | Automatic | Certbot (Step 10 above) |
-| Process management | Replit keeps it running | PM2 keeps it running |
-| Domain | `*.replit.dev` subdomain | Your own domain |
-| HMR (hot reload) | Partially works | Works fully on your machine |
-| Uploads folder | Lives inside Replit | Lives on your VPS at `/var/www/tutorbridge/uploads/` |
 
 ---
+
 
 ## Troubleshooting Common Problems
 

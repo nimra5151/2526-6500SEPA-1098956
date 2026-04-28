@@ -1,11 +1,10 @@
 import nodemailer from "nodemailer";
 
 // Resolve the public base URL for email links.
-// Priority: APP_URL (explicit production URL) → REPLIT_DEV_DOMAIN (Replit auto-provides this) → localhost fallback
+// Priority: APP_URL (explicit) → localhost fallback
 function getBaseUrl(): string {
   if (process.env.APP_URL) return process.env.APP_URL;
-  if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
-  return "http://localhost:5000";
+  return `http://localhost:${process.env.PORT || 5000}`;
 }
 
 // #21: HTML-escape user-supplied data before inserting into email templates

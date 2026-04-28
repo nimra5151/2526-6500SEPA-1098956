@@ -3,9 +3,7 @@ dist
 .local
 .DS_Store
 
-# Replit IDE files — safe to delete when running locally
-.replit
-replit.nix
+# IDE and editor files
 server/public
 vite.config.ts.*
 *.tar.gz
@@ -23,18 +21,11 @@ coverage/
 # Uploaded files
 uploads/
 
-# Development assets (prompt files, temporary images)
+# Development assets
 attached_assets/
 
-# AI and internal documentation
-CLAUDE.md
-FULL_SYSTEM_AUDIT.md
-project-plan.md
-claude-memory.md
-
-# AI agent and config directories
-.agents/
-.config/
+# Internal documentation
+*.draft.md
 
 # Test results
 test-results/
@@ -42,3 +33,6 @@ test-results/
 # Build artifacts
 dist/
 build/
+
+# Temporary working files
+delete_after/
