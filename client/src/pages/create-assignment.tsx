@@ -153,7 +153,7 @@ export default function CreateAssignment() {
       };
       if (assignment.classId) body.classId = Number(assignment.classId);
 
-      const data = await authFetch("/api/ai/lesson-plan", {
+      const data = await authFetch("/api/ai/assignment-generate", {
         method:"POST",
         body: JSON.stringify(body),
       });

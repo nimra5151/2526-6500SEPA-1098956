@@ -2979,7 +2979,57 @@ Keep responses concise (under 200 words) unless asked for more detail.`
         model: "gpt-4o-mini",
         messages: [{
           role: "user",
-          content: `Create an assignment plan for: "${topic}". Duration: ${mins} minutes. Level: ${level}. Audience: orphanage students aged 10-18.${contextBlock}
+          content: `Create a detailed lesson plan for: "${topic}". Duration: ${mins} minutes. Level: ${level}. Audience: orphanage students aged 10-18.${contextBlock}
+Return ONLY valid JSON matching this exact shape:
+{
+  "title": string,
+  "duration": ${mins},
+  "objectives": [string, string, string, string],
+  "materials": [string, string, string, string, string],
+  "activities": [{ "name": string, "duration": number, "description": string }],
+  "assessment": [string, string, string, string]
+}
+activities should sum roughly to ${mins} minutes total.${courseContext.trim() ? " Base the objectives, activities, and assessment on the provided course materials." : ""} Return only the JSON object, no extra text.`
+        }],
+        max_tokens: 1200,
+        response_format: { type: "json_object" },
+      });
+      let plan;
+      try { plan = JSON.parse(completion.choices[0]?.message?.content || "{}"); }
+      catch { return res.status(502).json({ message: "AI returned an invalid response. Please try again." }); }
+      plan._ragUsed = !!courseContext.trim();
+      res.json(plan);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // AI - Assignment Generator (RAG-grounded via course material context)
+  app.post("/api/ai/assignment-generate", authMiddleware, aiRateLimit, async (req, res) => {
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(503).json({ message: "AI features are not available: OPENAI_API_KEY is not configured." });
+    }
+    try {
+      const { topic, duration, difficulty, classId } = req.body;
+      if (!topic) return res.status(400).json({ message: "Topic required" });
+      if (topic.length > 500) return res.status(400).json({ message: "Topic too long (max 500 chars)" });
+      const mins = Number(duration) || 60;
+      const level = difficulty || "beginner";
+
+      // RAG: retrieve course material if classId is provided
+      let courseContext = "";
+      if (classId) {
+        const { retrieveClassContext } = await import("./rag/chain.js");
+        courseContext = await retrieveClassContext(Number(classId), topic);
+      }
+
+      const contextBlock = courseContext.trim()
+        ? `\n\nCOURSE MATERIALS (use these as the primary source for objectives, tasks, and assessment criteria):\n${courseContext}\n`
+        : "";
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{
+          role: "user",
+          content: `Create an assignment plan for: "${topic}". Estimated completion time: ${mins} minutes. Level: ${level}. Audience: orphanage students aged 10-18.${contextBlock}
 Return ONLY valid JSON matching this exact shape:
 {
   "title": string,
