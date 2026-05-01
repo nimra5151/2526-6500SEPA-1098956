@@ -102,4 +102,64 @@ describe("Auth API", () => {
     expect(status).toBe(200);
     expect(data.message).toContain("reset link");
   });
+
+  // T01 — Register new student account
+  it("T01 — POST /api/auth/signup — valid student data returns 201 + user object", async () => {
+    const uniqueEmail = `testuser.${Date.now()}@example.com`;
+    const { status, data } = await api("POST", "/api/auth/signup", {
+      name: "Test Student",
+      email: uniqueEmail,
+      password: "SecurePass123",
+      role: "student",
+    });
+    expect(status).toBe(201);
+    expect(data.user).toBeDefined();
+    expect(data.user.email).toBe(uniqueEmail);
+    expect(data.user.role).toBe("student");
+    expect(data.user.password).toBeUndefined();
+  });
+
+  // T02 — Duplicate email registration
+  it("T02 — POST /api/auth/signup — duplicate email returns 400", async () => {
+    const { status, data } = await api("POST", "/api/auth/signup", {
+      name: "Another User",
+      email: "kofi@example.com",
+      password: "SecurePass123",
+      role: "student",
+    });
+    expect(status).toBe(400);
+    expect(data.message).toMatch(/already exist/i);
+  });
+
+  // T17 — XSS in signup name → tags stripped at API level
+  it("T17 — POST /api/auth/signup — <script> in name is stripped before persisting", async () => {
+    const uniqueEmail = `xss.test.${Date.now()}@example.com`;
+    const { status, data } = await api("POST", "/api/auth/signup", {
+      name: "<script>alert('xss')</script>Test User",
+      email: uniqueEmail,
+      password: "SecurePass123",
+      role: "student",
+    });
+    expect(status).toBe(201);
+    expect(data.user.name).toBeDefined();
+    expect(data.user.name).not.toContain("<script>");
+    expect(data.user.name).not.toContain("</script>");
+    expect(data.user.name).toContain("Test User");
+  });
+
+  // T18 — Rate limiting: 16+ login requests in 15 minutes → 429
+  it("T18 — POST /api/auth/login — 16+ rapid requests triggers rate limit (429)", async () => {
+    const payload = { email: "ratelimit@example.com", password: "wrongpassword" };
+    let got429 = false;
+
+    for (let i = 0; i < 20; i++) {
+      const { status } = await api("POST", "/api/auth/login", payload);
+      if (status === 429) {
+        got429 = true;
+        break;
+      }
+    }
+
+    expect(got429).toBe(true);
+  });
 });

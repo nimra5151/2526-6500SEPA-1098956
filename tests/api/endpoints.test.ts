@@ -178,4 +178,17 @@ describe("Core API Endpoints", () => {
     const { status } = await api("GET", "/api/nonexistent");
     expect(status).toBe(404);
   });
+
+  // T07 — Student enrolls in a class
+  it("T07 — POST /api/bookings — student enroll returns 201 or 409 (already enrolled)", async () => {
+    const { status } = await api("POST", "/api/bookings", {
+      classId: 5,
+      tutorId: 2,
+      scheduledDate: "2026-06-01",
+      scheduledTime: "10:00",
+      duration: 60,
+    }, studentToken);
+    // 201 = new enrolment, 409 = already enrolled (idempotent — both prove the endpoint works)
+    expect([201, 409]).toContain(status);
+  });
 });
