@@ -334,7 +334,7 @@ export async function registerRoutes(
       if (!parsed.success) {
         return res.status(400).json({ message: parsed.error.errors[0]?.message || "Invalid input" });
       }
-      const { name, email, password, role, orphanage, organization, bio, skillsTaught, skillsLearning } = parsed.data;
+      const { name, email, password, role, dateOfBirth, orphanage, organization, bio, skillsTaught, skillsLearning } = parsed.data;
       const existing = await storage.getUserByEmail(email);
       if (existing) {
         return res.status(400).json({ message: "An account with this email may already exist. Try logging in." });
@@ -343,12 +343,29 @@ export async function registerRoutes(
       if (role === "coordinator" && !organization?.trim()) {
         return res.status(400).json({ message: "Organization name is required for coordinators" });
       }
+      // Server-side validation: students must be at least 13 years old
+      if (role === "student") {
+        if (!dateOfBirth) {
+          return res.status(400).json({ message: "Date of birth is required for student accounts" });
+        }
+        const dob = new Date(dateOfBirth);
+        const today = new Date();
+        let age = today.getFullYear() - dob.getFullYear();
+        const monthDiff = today.getMonth() - dob.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+          age--;
+        }
+        if (age < 13) {
+          return res.status(400).json({ message: "You must be at least 13 years old to create a student account" });
+        }
+      }
       const hashedPassword = await bcrypt.hash(password, 10);
       const user = await storage.createUser({
         name,
         email,
         password: hashedPassword,
         role,
+        dateOfBirth: dateOfBirth || null,
         orphanage: orphanage || null,
         organization: organization || null,
         bio: bio || null,

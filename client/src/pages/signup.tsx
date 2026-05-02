@@ -19,6 +19,7 @@ import {
   Check,
   Sparkles,
   Loader2,
+  Calendar,
 } from"lucide-react";
 import { motion, AnimatePresence } from"framer-motion";
 import { useQuery } from"@tanstack/react-query";
@@ -123,6 +124,7 @@ export default function Signup() {
     password:"",
     confirmPassword:"",
     role:"" as"student" |"tutor" |"coordinator" |"",
+    dateOfBirth:"",
     orphanage:"",
     organization:"",
     bio:"",
@@ -178,6 +180,24 @@ export default function Signup() {
       toast({ title:"Passwords do not match", variant:"destructive" });
       return false;
     }
+    // Validate date of birth for students (must be 13+)
+    if (formData.role === "student") {
+      if (!formData.dateOfBirth) {
+        toast({ title: "Date of birth is required for student accounts", variant: "destructive" });
+        return false;
+      }
+      const dob = new Date(formData.dateOfBirth);
+      const today = new Date();
+      let age = today.getFullYear() - dob.getFullYear();
+      const monthDiff = today.getMonth() - dob.getMonth();
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+        age--;
+      }
+      if (age < 13) {
+        toast({ title: "You must be at least 13 years old to create a student account", variant: "destructive" });
+        return false;
+      }
+    }
     return true;
   };
 
@@ -212,7 +232,8 @@ export default function Signup() {
     formData.name.length >= 2 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email) &&
     formData.password.length >= 8 &&
-    formData.password === formData.confirmPassword;
+    formData.password === formData.confirmPassword &&
+    (formData.role !== "student" || formData.dateOfBirth.length > 0);
 
   return (
     <div className="min-h-screen flex">
@@ -513,18 +534,42 @@ export default function Signup() {
                     </div>
 
                     {formData.role ==="student" && (
-                      <div className="space-y-2">
-                        <Label htmlFor="orphanage">{t("signup.orphanageName")}</Label>
-                        <Input
-                          id="orphanage"
-                          placeholder={t("signup.orphanagePlaceholder")}
-                          value={formData.orphanage}
-                          onChange={(e) =>
-                            updateField("orphanage", e.target.value)
-                          }
-                          data-testid="input-orphanage"
-                        />
-                      </div>
+                      <>
+                        <div className="space-y-2">
+                          <Label htmlFor="dateOfBirth">
+                            Date of Birth <span className="text-destructive">*</span>
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              id="dateOfBirth"
+                              type="date"
+                              value={formData.dateOfBirth}
+                              onChange={(e) =>
+                                updateField("dateOfBirth", e.target.value)
+                              }
+                              max={new Date(new Date().setFullYear(new Date().getFullYear() - 13)).toISOString().split('T')[0]}
+                              className="pr-10"
+                              data-testid="input-date-of-birth"
+                            />
+                            <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            You must be at least 13 years old to register
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="orphanage">{t("signup.orphanageName")}</Label>
+                          <Input
+                            id="orphanage"
+                            placeholder={t("signup.orphanagePlaceholder")}
+                            value={formData.orphanage}
+                            onChange={(e) =>
+                              updateField("orphanage", e.target.value)
+                            }
+                            data-testid="input-orphanage"
+                          />
+                        </div>
+                      </>
                     )}
 
                     {formData.role ==="tutor" && (

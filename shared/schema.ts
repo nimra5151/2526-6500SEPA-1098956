@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial, integer, boolean, timestamp, numeric, pgEnum, index, uniqueIndex, jsonb, check } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, integer, boolean, timestamp, date, numeric, pgEnum, index, uniqueIndex, jsonb, check } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -35,6 +35,7 @@ export const users = pgTable("users", {
   lockedUntil: timestamp("locked_until"),
   tokenVersion: integer("token_version").default(1).notNull(),
   lastLoginIp: text("last_login_ip"),
+  dateOfBirth: date("date_of_birth"),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
@@ -545,6 +546,7 @@ export const signupSchema = z.object({
   email: z.string().email("Please enter a valid email"),
   password: z.string().min(8, "Password must be at least 8 characters"),
   role: z.enum(["student", "tutor", "coordinator"]),
+  dateOfBirth: z.string().optional(),
   orphanage: z.string().optional(),
   organization: z.string().optional(),
   bio: z.string().optional(),
