@@ -138,7 +138,7 @@ function rateLimit(maxRequests: number, windowMs: number, prefix: string) {
   };
 }
 const isDev = process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test";
-const loginRateLimit   = rateLimit(15, 15 * 60 * 1000, "login");   // 15 req / 15 min (login) — strict in all environments
+const loginRateLimit   = rateLimit(isDev ? 100 : 15, 15 * 60 * 1000, "login");   // 15 req / 15 min (login) — relaxed in dev
 const signupRateLimit  = rateLimit(isDev ? 100 : 10, 15 * 60 * 1000, "signup");  // 10 req / 15 min (signup) — relaxed in dev
 const authRateLimit    = rateLimit(isDev ? 100 : 10, 15 * 60 * 1000, "auth");    // 10 req / 15 min (forgot-pw, resend, etc.) — relaxed in dev
 const gradeRateLimit   = rateLimit(60, 60 * 60 * 1000, "grade");   // #12: 60 grading ops / 1 hour
