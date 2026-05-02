@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeAll } from "vitest";
 
-const BASE = process.env.TEST_API_URL || "http://localhost:5000";
+const BASE = process.env.TEST_API_URL || "http://localhost:5001";
 
 async function api(method: string, path: string, body?: any, token?: string) {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { "x-forwarded-for": "10.0.0.3" };
   if (body && !(body instanceof FormData)) headers["Content-Type"] = "application/json";
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const res = await fetch(`${BASE}${path}`, {
@@ -31,10 +31,10 @@ describe("Feature Tests — T11–T20 + Extended Coverage", () => {
     tutorToken = t.data?.token;
     coordinatorToken = c.data?.token;
 
-    // Fetch student certificate code for T13
     const certs = await api("GET", "/api/certificates/my", undefined, studentToken);
-    if (Array.isArray(certs.data) && certs.data.length > 0) {
-      certCode = certs.data[0].verificationCode;
+    if (Array.isArray(certs.data)) {
+      const approvedCert = certs.data.find(c => c.status === "approved");
+      if (approvedCert) certCode = approvedCert.verificationCode;
     }
   });
 

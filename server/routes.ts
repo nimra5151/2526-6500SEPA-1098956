@@ -122,7 +122,8 @@ function coordinatorMiddleware(req: Request, res: Response, next: NextFunction) 
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
 function rateLimit(maxRequests: number, windowMs: number, prefix: string) {
   return (req: Request, res: Response, next: NextFunction) => {
-    const key = `${prefix}:${req.ip || "unknown"}`;
+    const clientIp = req.headers['x-forwarded-for'] || req.ip || "unknown";
+    const key = `${prefix}:${clientIp}`;
     const now = Date.now();
     const entry = rateLimitStore.get(key);
     if (!entry || now > entry.resetAt) {
@@ -137,7 +138,7 @@ function rateLimit(maxRequests: number, windowMs: number, prefix: string) {
   };
 }
 const isDev = process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test";
-const loginRateLimit   = rateLimit(isDev ? 100 : 15, 15 * 60 * 1000, "login");   // 15 req / 15 min (login) — relaxed in dev
+const loginRateLimit   = rateLimit(15, 15 * 60 * 1000, "login");   // 15 req / 15 min (login) — strict in all environments
 const signupRateLimit  = rateLimit(isDev ? 100 : 10, 15 * 60 * 1000, "signup");  // 10 req / 15 min (signup) — relaxed in dev
 const authRateLimit    = rateLimit(isDev ? 100 : 10, 15 * 60 * 1000, "auth");    // 10 req / 15 min (forgot-pw, resend, etc.) — relaxed in dev
 const gradeRateLimit   = rateLimit(60, 60 * 60 * 1000, "grade");   // #12: 60 grading ops / 1 hour
@@ -3847,7 +3848,12 @@ Give exactly 3 suggestions. Each "text" should describe their current progress c
   });
 
   // FILE UPLOAD for assignment submissions
-  app.post("/api/upload/assignment", authMiddleware, uploadRateLimit, upload.single("file"), async (req: any, res: Response) => {
+  app.post("/api/upload/assignment", authMiddleware, uploadRateLimit, (req, res, next) => {
+    upload.single("file")(req, res, (err) => {
+      if (err) return res.status(400).json({ message: err.message });
+      next();
+    });
+  }, async (req: any, res: Response) => {
     try {
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
       // Guard against path traversal

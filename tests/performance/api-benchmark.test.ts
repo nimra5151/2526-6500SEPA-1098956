@@ -3,20 +3,21 @@ import { describe, it, expect, beforeAll } from "vitest";
 // ═══════════════════════════════════════════════════════════════════════════════
 // Performance & Load Testing Suite
 // Benchmarks API response times and validates acceptable performance thresholds
-// Run with: npm run test (requires server running on localhost:5000)
+// Run with: npm run test (requires server running on localhost:5001)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const BASE = process.env.TEST_API_URL || "http://localhost:5000";
+const BASE = process.env.TEST_API_URL || "http://localhost:5001";
 const ACCEPTABLE_RESPONSE_TIME = 2000; // 2 seconds max
 const FAST_RESPONSE_TIME = 500;        // 500ms for simple endpoints
 
 async function api(method: string, path: string, body?: any, token?: string) {
-  const headers: Record<string, string> = {};
-  if (body) headers["Content-Type"] = "application/json";
-  if (token) headers["Authorization"] = `Bearer ${token}`;
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers,
+    headers: {
+      "Content-Type": "application/json",
+      "x-forwarded-for": "10.0.0.4",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => null);

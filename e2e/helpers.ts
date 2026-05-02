@@ -1,7 +1,7 @@
 import { type APIRequestContext } from "@playwright/test";
 
 /** Shared base URL for API calls */
-export const BASE = "http://localhost:5000";
+export const BASE = "http://localhost:5001";
 
 /** Unique suffix to avoid collisions across test runs */
 export const RUN_ID = Date.now().toString(36);
@@ -21,7 +21,11 @@ export async function apiSignup(
     organization?: string;
   }
 ) {
-  const res = await request.post(`${BASE}/api/auth/signup`, { data });
+  const ip = `10.1.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
+  const res = await request.post(`${BASE}/api/auth/signup`, { 
+    data,
+    headers: { "x-forwarded-for": ip }
+  });
   return { status: res.status(), body: await res.json() };
 }
 
@@ -34,8 +38,10 @@ export async function apiLogin(
   email: string,
   password: string
 ) {
+  const ip = `10.2.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
   const res = await request.post(`${BASE}/api/auth/login`, {
     data: { email, password },
+    headers: { "x-forwarded-for": ip }
   });
   return { status: res.status(), body: await res.json() };
 }

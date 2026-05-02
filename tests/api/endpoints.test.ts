@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeAll } from "vitest";
 
-const BASE = process.env.TEST_API_URL || "http://localhost:5000";
+const BASE = process.env.TEST_API_URL || "http://localhost:5001";
 
 async function api(method: string, path: string, body?: any, token?: string) {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { "x-forwarded-for": "10.0.0.2" };
   if (body) headers["Content-Type"] = "application/json";
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const res = await fetch(`${BASE}${path}`, {

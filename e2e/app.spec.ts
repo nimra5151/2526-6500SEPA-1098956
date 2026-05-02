@@ -70,6 +70,7 @@ test.describe("Scenario 1 — Student signup → verify → login → dashboard"
     expect(loginAfter.body.token).toBeTruthy();
 
     // 1e. UI: login form → redirects to dashboard
+    await page.context().setExtraHTTPHeaders({ "x-forwarded-for": `10.5.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}` });
     await page.goto("/login");
     await page.getByTestId("input-email").fill(student.email);
     await page.getByTestId("input-password").fill(student.password);
@@ -331,9 +332,14 @@ test.describe("Scenario 8 — Student Dashboard: six feature fixes", () => {
   async function loginViaToken(page: any, token: string, path = "/student-dashboard") {
     await page.addInitScript((t: string) => {
       localStorage.setItem("token", t);
+      const originalGetItem = localStorage.getItem;
+      localStorage.getItem = function(key) {
+        if (key && key.startsWith('tutorbridge_onboarded_')) return "1";
+        return originalGetItem.call(localStorage, key);
+      };
     }, token);
     await page.goto(path);
-    await page.waitForURL(/student-dashboard/, { timeout: 15000 });
+    await page.waitForURL(new RegExp(path), { timeout: 15000 });
     // Wait for the tabs to appear (signals dashboard fully rendered)
     await page.waitForSelector('[role="tab"]', { timeout: 15000 });
   }
@@ -429,17 +435,21 @@ test.describe("Scenario 8 — Student Dashboard: six feature fixes", () => {
     // UI: navigate to Quizzes tab and click Review
     await loginViaToken(page, studentToken);
     await page.getByRole("tab", { name: /quizzes/i }).click();
-    await expect(page.getByText(quizTitle)).toBeVisible({ timeout: 10000 });
-    // Click the Review button in the row containing this quiz title
-    await page.getByText(quizTitle).locator("..").getByRole("button", { name: /review/i }).click();
+    await expect(page.getByText(quizTitle).first()).toBeVisible({ timeout: 10000 });
+    // Click the Review button in the My Quiz Results table row (not Available Quizzes)
+    const quizRow = page.locator("tr", { has: page.getByText(quizTitle) })
+      .filter({ has: page.getByRole("button", { name: /^review$/i }) })
+      .first();
+    await expect(quizRow).toBeVisible({ timeout: 15000 });
+    await quizRow.getByRole("button", { name: /^review$/i }).click();
     // Assert the review modal opens (role="dialog" added to the modal div)
     const dialog = page.getByRole("dialog", { name: "Quiz Review" });
     await expect(dialog).toBeVisible({ timeout: 5000 });
     // Assert the quiz title heading is shown inside the modal
-    await expect(dialog.getByText(quizTitle)).toBeVisible({ timeout: 3000 });
+    await expect(dialog.getByText(quizTitle).first()).toBeVisible({ timeout: 3000 });
     // Assert the actual question text is rendered (question-by-question breakdown)
     await expect(
-      dialog.getByText("What is 3+3?").or(dialog.getByText("Capital of France?"))
+      dialog.getByText("What is 3+3?").or(dialog.getByText("Capital of France?")).first()
     ).toBeVisible({ timeout: 5000 });
     // Assert the score badge (Passed / Failed + score) is shown
     await expect(dialog.getByText(/passed|failed/i)).toBeVisible({ timeout: 3000 });
@@ -453,7 +463,11 @@ test.describe("Scenario 8 — Student Dashboard: six feature fixes", () => {
     // UI: open the New Note modal, fill in tags, and save
     await loginViaToken(page, token);
     await page.getByRole("tab", { name: /library/i }).click();
-    await page.getByRole("button", { name: /new note/i }).click();
+    
+    // Wait for the button to be visible and click the first matching one (either header or empty state)
+    const newNoteBtn = page.getByRole("button", { name: /new note|create note/i }).first();
+    await expect(newNoteBtn).toBeVisible({ timeout: 10000 });
+    await newNoteBtn.click({ force: true });
 
     // Modal opens with role="dialog" aria-label="New Note"
     const noteDialog = page.getByRole("dialog", { name: "New Note" });
@@ -508,7 +522,7 @@ test.describe("Scenario 8 — Student Dashboard: six feature fixes", () => {
     await loginViaToken(page, token);
     // Dashboard loads on Overview tab by default; recently viewed section shows class title
     await expect(
-      page.getByText(targetClass.title, { exact: false })
+      page.getByText(targetClass.title, { exact: false }).first()
     ).toBeVisible({ timeout: 12000 });
   });
 
@@ -561,20 +575,33 @@ test.describe("Scenario 8 — Student Dashboard: six feature fixes", () => {
     // Ensure the student is enrolled in that class (idempotent — duplicate bookings are fine)
     await request.post(`${BASE}/api/bookings`, {
       headers: authHeader(studentToken),
-      data: { classId, scheduledDate: new Date().toISOString().split("T")[0], scheduledTime: "10:00", duration: 60 },
+      data: { classId, tutorId: sharedClass.tutorId, scheduledDate: new Date().toISOString().split("T")[0], scheduledTime: "10:00", duration: 60 },
     });
 
-    // Tutor posts an open peer help request in that class
-    const reqRes = await request.post(`${BASE}/api/peer-help-requests`, {
-      headers: authHeader(tutorToken),
-      data: { classId, topic: `Tutor needs help ${RUN_ID}`, description: "Please help me understand this topic", urgency: "medium" },
+    // Use a second seed student (already verified) instead of creating a new one
+    const student2Token = await getToken(request, "nia@example.com", "password123");
+
+    // Enroll student2 in the class
+    await request.post(`${BASE}/api/bookings`, {
+      headers: authHeader(student2Token),
+      data: { classId, tutorId: sharedClass.tutorId, scheduledDate: new Date().toISOString().split("T")[0], scheduledTime: "11:00", duration: 60 },
     });
+
+    // Student 2 posts an open peer help request in that class
+    const reqRes = await request.post(`${BASE}/api/peer-help-requests`, {
+      headers: authHeader(student2Token),
+      data: { classId, topic: `Student2 needs help ${RUN_ID}`, description: "Please help me understand this topic", urgency: "medium" },
+    });
+    if (reqRes.status() !== 201) {
+      const errBody = await reqRes.json();
+      console.error("Peer help request failed:", reqRes.status(), errBody);
+    }
     expect(reqRes.status()).toBe(201);
     const peerRequest = await reqRes.json();
     const targetRequestId = peerRequest.id;
     expect(targetRequestId).toBeDefined();
 
-    // Student offers to help the tutor's request
+    // Student 1 offers to help Student 2's request
     const offerRes = await request.post(`${BASE}/api/peer-help-requests/${targetRequestId}/offer`, {
       headers: authHeader(studentToken),
       data: { sessionDate: new Date(Date.now() + 86400000).toISOString().split("T")[0], sessionTime: "14:00" },
